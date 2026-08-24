@@ -142,6 +142,20 @@ def main() -> int:
         check("show prints body", "Spec One" in out and "tickets" in out.lower())
         out = tenx("doctor", cwd=proj).stdout
         check("doctor healthy", "validation: 0 errors" in out, out)
+        print("== exec brief (spec-first autonomous execution) ==")
+        tenx("new", "spec", "Exec Spec", "--epic", "EPC-001", cwd=proj)
+        tenx("ticket", "SPC-002", "SPC-002-T1", "todo", cwd=proj)
+        out = tenx("exec", "SPC-002", cwd=proj).stdout
+        check("exec names spec", "EXECUTION BRIEF — SPC-002" in out)
+        check("exec lists ticket", "SPC-002-T1: todo" in out)
+        check("exec mandates write-back", "tenx ticket SPC-002" in out
+              and "tenx log" in out)
+        check("exec mandates validate", "tenx validate" in out)
+        out = tenx("exec", "SPC-002", "--json", cwd=proj).stdout
+        check("exec --json", json.loads(out)["spec"] == "SPC-002")
+        r = tenx("exec", "EPC-001", cwd=proj, expect_rc=1)
+        check("exec rejects non-spec", r.returncode == 1)
+
         print("== standalone PM repo (the 10X layout) ==")
         pm = tmp / "pm-repo"
         app = tmp / "app-repo"

@@ -62,6 +62,18 @@ Wiring: the harness config records `code_root:`; the code repo gets a
 every `tenx` command resolves the harness through the link automatically.
 Co-located (`.tenx/` inside the code repo) remains the default.
 
+### Multiplayer: share the harness
+
+The context base and the skills are plain git-trackable markdown:
+
+- Commit `.tenx/` (or the standalone PM repo) and review it in PRs — the
+  team's context compounds instead of living in individual chat histories.
+- Team skill channels: clone a shared skills repo and run
+  `tenx skills install --target <shared-repo>/skills`; good skills get
+  merged into main, mirroring 10X's "channels merged into main" workflow.
+- The activity log (`tenx history`) records who/what did what, human or
+  agent, so overnight runs leave an audit trail.
+
 ## The artifact types
 
 | Type | ID | Purpose |
@@ -113,6 +125,21 @@ tenx hook [--mode agent]         # emit the packet (used by the SessionStart hoo
 tenx hook install --agent claude|codex|opencode|gemini|all
 tenx doctor                      # health check
 ```
+
+### Spec-first autonomous execution
+
+Write the spec (3–4 hours of markdown, per the video), then hand the agent
+an execution brief:
+
+```bash
+tenx exec SPC-001 | claude -p     # headless overnight run
+tenx exec SPC-001                 # or paste into an interactive session
+```
+
+The brief tells the agent to work ticket by ticket, write back every state
+change (`tenx ticket`, `tenx log`), validate before finishing, and commit
+both repos. `tenx ticket` creates tickets on first touch, so agents can grow
+a spec's ticket list as they discover work.
 
 All read commands support `--json` for machine consumption. Discovery
 order: `TENX_ROOT` env > `.tenx/` walking up > `.tenxlink` walking up >

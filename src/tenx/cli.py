@@ -42,6 +42,7 @@ from .artifacts import (
     update_meta,
 )
 from .context import build_context, render_markdown
+from .execbrief import build_exec_brief
 from .discovery import (TENXLINK, code_root, env_project_root,
                         find_project_root, harness_root, is_initialized)
 from .hooks import install as install_hook
@@ -336,13 +337,23 @@ def cmd_ticket(args: argparse.Namespace) -> int:
         if isinstance(t, dict) and str(t.get("id", "")).upper() == args.ticket.upper():
             target = t
             break
+    created = False
     if target is None:
-        print(f"tenx: no ticket {args.ticket} in {art.id}", file=sys.stderr)
-        return 1
+        # create-on-first-touch so agents can grow a spec's ticket list
+        target = {"id": args.ticket.upper(),
+                  "title": args.title or "",
+                  "status": args.status}
+        tickets.append(target)
+        created = True
     old = target.get("status")
     target["status"] = args.status
+    if args.title and not target.get("title"):
+        target["title"] = args.title
     update_meta(art, {"tickets": tickets})
-    print(f"{art.id} {target['id']}: {old} -> {args.status}")
+    if created:
+        print(f"{art.id} {target['id']}: created as {args.status}")
+    else:
+        print(f"{art.id} {target['id']}: {old} -> {args.status}")
     d = derived_status(art)
     if d:
         print(f"derived spec status: {d} (authored: {art.status})")
@@ -437,6 +448,28 @@ def cmd_skills(args: argparse.Namespace) -> int:
         return 0
     print(f"tenx: unknown skills command {args.skills_cmd}", file=sys.stderr)
     return 2
+
+
+def cmd_exec(args: argparse.Namespace) -> int:
+    """Print an autonomous execution brief for a spec."""
+    root = _root_or_die(args.root)
+    _require_init(root)
+    harness = load_harness(root)
+    art = harness.get(args.spec.upper())
+    if art is None or art.type != "spec":
+        print(f"tenx: {args.spec} is not a spec", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps({
+            "spec": art.id,
+            "title": art.title,
+            "status": art.status,
+            "tickets": art.tickets,
+            "brief": build_exec_brief(harness, art, root),
+        }, indent=2))
+        return 0
+    print(build_exec_brief(harness, art, root))
+    return 0
 
 
 def cmd_hook(args: argparse.Namespace) -> int:
@@ -568,6 +601,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("spec")
     sp.add_argument("ticket")
     sp.add_argument("status", choices=TICKET_STATUSES)
+    sp.add_argument("--title", help="ticket title (used when creating)")
     sp.set_defaults(func=cmd_ticket)
 
     sp = sub.add_parser("validate", help="lint the SDLC")
@@ -591,6 +625,12 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("next", help="most important thing to work on next")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_next)
+
+    sp = sub.add_parser("exec",
+                        help="print an autonomous execution brief for a spec")
+    sp.add_argument("spec", help="spec ID, e.g. SPC-001")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=cmd_exec)
 
     sp = sub.add_parser("skills", help="manage bundled skills")
     sp.add_argument("skills_cmd", choices=["list", "install", "status"])
