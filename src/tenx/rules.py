@@ -143,11 +143,16 @@ def validate(project_root: Path, harness: Harness | None = None) -> RuleSet:
     _rule_statuses(harness, rs)
     _rule_epic_refs(harness, rs)
     _rule_tickets(harness, rs)
+    _rule_spec_sections(harness, rs)
     _rule_derived_drift(harness, rs)
     _rule_epic_drift(harness, rs)
     _rule_convention_index(project_root, harness, rs)
+    _rule_convention_body(harness, rs)
+    _rule_id_filename(harness, rs)
+    _rule_config_code_root(project_root, rs)
     _rule_stale(harness, rs)
     _rule_dates(harness, rs)
+    _rule_activity_discipline(project_root, rs)
     _rule_log_quiet(project_root, rs)
     return rs
 
@@ -246,10 +251,37 @@ def _rule_tickets(harness: Harness, rs: RuleSet) -> None:
                        f"{s.id}: ticket {tid or '?'} status '{tstat}' "
                        f"not in {list(TICKET_STATUSES)}",
                        artifact_id=s.id)
-        if s.status in ("in_review", "complete") and not s.tickets:
+        if s.status in ("in_progress", "in_review", "complete") and not s.tickets:
             rs.add("orphan-spec", "warning",
                    f"{s.id}: status '{s.status}' but no tickets defined; "
                    "break the spec into tickets so progress is verifiable",
+                   artifact_id=s.id)
+        # ticket hygiene: traceable ids and titles
+        for t in s.tickets:
+            tid = str(t.get("id", ""))
+            if tid and not tid.startswith(f"{s.id}-T"):
+                rs.add("ticket-id-prefix", "warning",
+                       f"{s.id}: ticket {tid} should be named "
+                       f"'{s.id}-T<n>' (sync markers depend on it)",
+                       artifact_id=s.id)
+            if tid and not str(t.get("title", "")).strip():
+                rs.add("ticket-title-missing", "info",
+                       f"{s.id}: ticket {tid} has no title",
+                       artifact_id=s.id)
+
+
+def _rule_spec_sections(harness: Harness, rs: RuleSet) -> None:
+    required = [x.strip() for x in str(
+        rs.params.get("spec_sections", "Summary,Validation")).split(",")
+        if x.strip()]
+    for s in harness.by_type("spec"):
+        if s.parse_error:
+            continue
+        missing = [sec for sec in required if f"## {sec}" not in s.body]
+        if missing:
+            rs.add("spec-missing-sections", "warning",
+                   f"{s.id}: body missing required section(s): "
+                   + ", ".join(f"'## {m}'" for m in missing),
                    artifact_id=s.id)
 
 
@@ -293,6 +325,12 @@ def _rule_epic_drift(harness: Harness, rs: RuleSet) -> None:
             rs.add("epic-progress-drift", "info",
                    f"{e.id}: all specs complete but epic status is '{e.status}'",
                    artifact_id=e.id)
+        if e.status == "archived":
+            active = sorted(s.id for s in specs if s.status != "archived")
+            if active:
+                rs.add("archived-epic-active-specs", "warning",
+                       f"{e.id}: epic archived but specs still active: "
+                       f"{', '.join(active)}", artifact_id=e.id)
 
 
 def _rule_convention_index(project_root: Path, harness: Harness, rs: RuleSet) -> None:
@@ -327,6 +365,95 @@ def rebuild_convention_index(project_root: Path, harness: Harness) -> Path:
         lines.append(f"- **{c.id}** — {c.title} `[{status}]` → `{c.path.name}`\n")
     idx_path.write_text("".join(lines), encoding="utf-8")
     return idx_path
+
+
+def _rule_convention_body(harness: Harness, rs: RuleSet) -> None:
+    min_chars = int(rs.params.get("min_convention_chars", 40))
+    for c in harness.by_type("convention"):
+        if c.parse_error:
+            continue
+        text = "\n".join(
+            ln for ln in c.body.splitlines()
+            if ln.strip() and not ln.lstrip().startswith("#"))
+        if len(text.strip()) < min_chars:
+            rs.add("convention-empty-body", "warning",
+                   f"{c.id}: convention body has < {min_chars} chars of "
+                   "content; a convention with no substance cannot be "
+                   "followed", artifact_id=c.id)
+
+
+def _rule_id_filename(harness: Harness, rs: RuleSet) -> None:
+    for a in harness.artifacts:
+        if a.parse_error or not a.id:
+            continue
+        if not a.path.name.startswith(a.id):
+            rs.add("id-filename-mismatch", "warning",
+                   f"{a.id}: filename '{a.path.name}' does not start "
+                   "with the artifact id", artifact_id=a.id)
+
+
+def _rule_config_code_root(project_root: Path, rs: RuleSet) -> None:
+    cfg_path = harness_root(project_root) / "config.yaml"
+    if not cfg_path.is_file():
+        return
+    try:
+        cfg = yamlite_load(cfg_path.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return
+    if not cfg.get("standalone"):
+        return
+    code_root_val = cfg.get("code_root")
+    if not code_root_val:
+        rs.add("config-code-root", "error",
+               "config declares standalone: true but has no code_root",
+               path=str(cfg_path))
+        return
+    cr = Path(str(code_root_val))
+    if not cr.is_absolute():
+        cr = (project_root / cr)
+    if not cr.resolve().is_dir():
+        rs.add("config-code-root", "error",
+               f"config code_root '{code_root_val}' does not exist",
+               path=str(cfg_path))
+
+
+def _rule_activity_discipline(project_root: Path, rs: RuleSet) -> None:
+    p = log_path(project_root)
+    if not p.is_file():
+        return
+    entries = read_entries(project_root)
+    if not entries:
+        return
+    # log-progress-no-ref: write-back should point at an artifact
+    for e in entries:
+        if str(e.get("type", "")) == "progress" and not str(e.get("ref", "")).strip():
+            rs.add("log-progress-no-ref", "info",
+                   f"progress entry '{str(e.get('message', ''))[:50]}' has "
+                   "no ref; write-back should reference an artifact")
+    # blocker-unresolved: blocker with no later progress/decision on same ref
+    blocker_days = int(rs.params.get("blocker_days", 14))
+    now = dt.datetime.now(dt.timezone.utc)
+    for i, e in enumerate(entries):
+        if str(e.get("type", "")) != "blocker":
+            continue
+        try:
+            ts = dt.datetime.fromisoformat(str(e.get("ts", "")))
+        except ValueError:
+            continue
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=dt.timezone.utc)
+        if now - ts > dt.timedelta(days=blocker_days):
+            continue
+        ref = str(e.get("ref", ""))
+        resolved = any(
+            str(later.get("type", "")) in ("progress", "decision")
+            and (not ref or str(later.get("ref", "")) == ref)
+            for later in entries[i + 1:])
+        if not resolved:
+            rs.add("blocker-unresolved", "info",
+                   f"blocker logged {str(e.get('ts', ''))[:10]}"
+                   + (f" on {ref}" if ref else "")
+                   + " has no follow-up progress/decision entry yet")
 
 
 def _rule_stale(harness: Harness, rs: RuleSet) -> None:

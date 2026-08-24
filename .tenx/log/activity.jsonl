@@ -26,3 +26,6 @@
 {"ts": "2026-08-24T15:59:38+00:00", "type": "progress", "actor": "agent", "message": "github sync push to sivakoneti/10xdev-cli: 8 created, 0 updated"}
 {"ts": "2026-08-24T16:01:53+00:00", "type": "progress", "actor": "agent", "message": "tenx review (empty-queue msg, days-in-state, in_review tickets, --json) + tenx archive (open-ticket guard rc=2, --yes override, decision log) verified live", "ref": "SPC-006"}
 {"ts": "2026-08-24T16:08:35+00:00", "type": "progress", "actor": "agent", "message": "codebase map updated from tenx scan (26 files, stacks: python)", "ref": "DOC-002"}
+{"ts": "2026-08-24T16:09:03+00:00", "type": "progress", "actor": "agent", "message": "github sync push to sivakoneti/10xdev-cli: 0 created, 3 updated"}
+{"ts": "2026-08-24T16:18:18+00:00", "type": "progress", "actor": "agent", "message": "SPC-007 rules live: orphan-spec extended to in_progress; spec-missing-sections (param spec_sections); ticket-id-prefix; ticket-title-missing; archived-epic-active-specs — all verified positive+negative", "ref": "SPC-007"}
+{"ts": "2026-08-24T16:23:02+00:00", "type": "progress", "actor": "agent", "message": "SPC-007 complete: 5 rules + 7 smoke checks green", "ref": "SPC-007"}

@@ -381,6 +381,46 @@ def main() -> int:
         check("mcp install idempotent",
               json.loads(mcpjson.read_text()) == cfg)
 
+        # ---- SPC-007 execution discipline rules ----
+        rulesproj = Path(tempfile.mkdtemp(prefix="tenx-rules-"))
+        tenx("init", "--name", "rules", cwd=rulesproj)
+        tenx("new", "epic", "Rules epic", cwd=rulesproj)
+        tenx("new", "spec", "Rules spec", "--epic", "EPC-001",
+             cwd=rulesproj)
+        def rules_in(proj):
+            d = json.loads(tenx("validate", "--json", cwd=proj).stdout)
+            return {f["rule"] for k in ("errors", "warnings", "info")
+                    for f in d.get(k, [])}
+
+        # orphan-spec: in_progress with no tickets
+        tenx("set", "SPC-001", "status", "in_progress", cwd=rulesproj)
+        check("rule orphan-spec fires for in_progress",
+              "orphan-spec" in rules_in(rulesproj))
+        # spec-missing-sections: strip body sections
+        specfile = next((rulesproj / ".tenx/specs").glob("SPC-001*.md"))
+        t = specfile.read_text()
+        fm_end = t.index("---", 3) + 3
+        specfile.write_text(t[:fm_end] + "\nNo sections.\n")
+        # ticket-id-prefix + ticket-title-missing
+        tenx("ticket", "SPC-001", "FOO-1", "done", cwd=rulesproj)
+        found = rules_in(rulesproj)
+        check("rule spec-missing-sections fires",
+              "spec-missing-sections" in found)
+        check("rule ticket-id-prefix fires",
+              "ticket-id-prefix" in found)
+        check("rule ticket-title-missing fires",
+              "ticket-title-missing" in found)
+        # archived-epic-active-specs
+        tenx("set", "EPC-001", "status", "archived", cwd=rulesproj)
+        check("rule archived-epic-active-specs fires",
+              "archived-epic-active-specs" in rules_in(rulesproj))
+        # disable knob still works for a new rule
+        (rulesproj / ".tenx/rules.yaml").write_text(
+            "disable:\n  - ticket-id-prefix\n")
+        check("rules.yaml disables new rule",
+              "ticket-id-prefix" not in rules_in(rulesproj))
+        shutil.rmtree(rulesproj, ignore_errors=True)
+
         # ---- tenx review + archive ----
         tenx("new", "epic", "Review epic", cwd=scanproj)
         tenx("new", "spec", "Review spec", "--epic", "EPC-001",
