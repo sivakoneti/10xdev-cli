@@ -46,6 +46,44 @@ From then on, every Claude Code session in the project starts with the full
 context packet injected, and Codex/OpenCode/Gemini agents are instructed via
 a managed `AGENTS.md` block to run it.
 
+### Works with any agent harness
+
+tenx is harness-agnostic by contract: the context base is plain markdown
+files and the tooling is one shell command that prints text. Any harness
+with a terminal tool can use 100% of it.
+
+The harness layer follows OpenDesign's agent-adapter architecture
+(`docs/agent-adapters.md`): **adapters are data, not code**. Each harness
+is one declarative record in `src/tenx/adapters.py` (bins to probe,
+auto-loaded instruction files, hook mechanism, skills dir); a generic
+engine installs and detects from those fields. Adding a harness is a
+one-entry change — no engine edits.
+
+```bash
+tenx hook detect              # probe PATH for ~27 known harnesses
+tenx hook detect --json
+tenx hook install --agent detected   # wire only what's installed
+tenx hook install --agent hermes     # or any single adapter id
+tenx hook install --agent all        # every file-based target
+```
+
+Injection tiers:
+
+1. **Forced hook** — the harness runs a command at session start and
+   injects stdout: Claude Code (`.claude/settings.json` SessionStart).
+   Any harness with an equivalent hook mechanism just needs to run
+   `tenx context --mode agent`.
+2. **Auto-loaded instruction files** — the adapter catalog covers:
+   claude, codex, opencode, cursor, gemini, cline, windsurf, copilot,
+   continue, aider, amp, qoder, qwen, grok, deepseek, deepseek-harness
+   (dsh), prime-agent, devin, hermes, kimi, kiro, kilo, vibe, vela,
+   trae, pi, generic.
+3. **Universal bootstrap** — for anything else: paste the output of
+   `tenx hook bootstrap` into the harness's system prompt / custom
+   instructions. That block is the entire integration; it only assumes
+   the agent can run shell commands. Even with nothing installed, an
+   agent can always run `tenx context --mode agent` on demand.
+
 ### Alternative: standalone PM repo (the 10X layout)
 
 10X keeps their artifacts in a dedicated *project management repo*, separate

@@ -1,13 +1,22 @@
 """Session-start hooks: install the context packet into agent runtimes.
 
-Supported targets:
+Two injection tiers:
 
-- claude   -> .claude/settings.json SessionStart hook (command output is
-              injected into the session context)
-- codex / opencode / generic
-           -> managed block in AGENTS.md instructing the agent to run the
-              packet command at session start
-- gemini   -> managed block in GEMINI.md
+1. Forced injection — the harness runs a command and injects stdout:
+   - claude   -> .claude/settings.json SessionStart hook
+
+2. Auto-loaded instruction files — the harness reads these at session
+   start; the managed block instructs the agent to run the packet:
+   - codex / opencode / zed / most generic agents -> AGENTS.md
+   - gemini    -> GEMINI.md
+   - cursor    -> .cursor/rules/tenx.mdc (alwaysApply rule)
+   - cline     -> .clinerules/tenx.md
+   - windsurf  -> .windsurfrules
+   - copilot   -> .github/copilot-instructions.md
+   - continue  -> .continuerules
+
+Any other harness works too: the CLI is plain shell + stdout, so any agent
+with a terminal tool can run `tenx context --mode agent` on demand.
 """
 
 from __future__ import annotations
@@ -79,31 +88,130 @@ def install_md_block(project_root: Path, filename: str = "AGENTS.md") -> tuple[b
     else:
         sep = "\n\n" if text.strip() else ""
         new_text = text.rstrip() + sep + AGENT_MD_BLOCK + "\n"
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(new_text, encoding="utf-8")
     return True, str(path)
 
 
+CURSOR_RULE = f"""---
+description: tenx meta-harness — run the context packet before any work
+globs:
+alwaysApply: true
+---
+
+{AGENT_MD_BLOCK}
+"""
+
+
+def install_managed_file(project_root: Path, relpath: str,
+                         content: str | None = None) -> tuple[bool, str]:
+    """Write a fully-managed file (overwritten on every install)."""
+    path = project_root / relpath
+    text = content if content is not None else AGENT_MD_BLOCK + "\n"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_file() and path.read_text(encoding="utf-8") == text:
+        return False, str(path)
+    path.write_text(text, encoding="utf-8")
+    return True, str(path)
+
+
+def install_cursor_rule(project_root: Path) -> tuple[bool, str]:
+    return install_managed_file(project_root, ".cursor/rules/tenx.mdc",
+                                CURSOR_RULE)
+
+
+def install_cline_rule(project_root: Path) -> tuple[bool, str]:
+    return install_managed_file(project_root, ".clinerules/tenx.md")
+
+
+BOOTSTRAP_SNIPPET = """This project uses the tenx meta-harness: a structured context base in
+`.tenx/` (epics, specs, conventions, docs, activity log).
+
+MANDATORY at session start, before planning or writing any code:
+run `tenx context --mode agent` and read the entire packet it prints.
+It lists what we are building, the active specs, conventions, recent
+activity, and the operating protocol. Follow that protocol.
+
+Write-back contract: after significant work, record it —
+`tenx log "<what changed>" --ref <ID>`, move tickets with
+`tenx ticket <SPEC> <TICKET> <status>`, and run `tenx validate` before
+finishing. The harness is the source of truth; keep it honest."""
+
+
+def bootstrap_snippet() -> str:
+    """The universal one-block bootstrap for ANY harness.
+
+    Paste this into any agent harness's system prompt, custom
+    instructions, or session-start config. It only assumes the harness
+    can run shell commands and read their output.
+    """
+    return BOOTSTRAP_SNIPPET
+
+
+def _install_instruction_file(target: Path, rel: str) -> tuple[bool, str]:
+    """Engine: install the managed block into one auto-loaded file.
+
+    File-kind handling is by path shape, not by harness name:
+    - *.mdc                     -> Cursor rule with alwaysApply frontmatter
+    - .clinerules/*, .kiro/*    -> fully managed standalone file
+    - anything else             -> managed block merged into the file
+    """
+    if rel.endswith(".mdc"):
+        return install_managed_file(target, rel, CURSOR_RULE)
+    if rel.startswith(".clinerules/") or rel.startswith(".kiro/"):
+        return install_managed_file(target, rel)
+    return install_md_block(target, rel)
+
+
+def install_adapter(target: Path, adapter) -> list[tuple[bool, str]]:
+    """Engine: install one adapter purely from its declared fields."""
+    results: list[tuple[bool, str]] = []
+    if adapter.hook == "claude-settings":
+        results.append(install_claude_hook(target))
+    for rel in adapter.instruction_files:
+        results.append(_install_instruction_file(target, rel))
+    return results
+
+
 def install(project_root: Path, agent: str,
             target_root: Path | None = None) -> list[tuple[bool, str]]:
-    """Install hooks into target_root (default: the code root for this harness)."""
+    """Install hooks into target_root (default: the code root).
+
+    agent: an adapter id, "all" (every adapter, deduped), or "detected"
+    (only adapters whose binary is on PATH, plus the generic AGENTS.md
+    fallback).
+    """
+    from .adapters import ADAPTERS, detect_adapters, get_adapter
     from .discovery import code_root
 
     target = target_root or code_root(project_root)
-    results: list[tuple[bool, str]] = []
-    if agent == "claude":
-        results.append(install_claude_hook(target))
-        results.append(install_md_block(target, "CLAUDE.md"))
-    elif agent == "codex":
-        results.append(install_md_block(target, "AGENTS.md"))
-    elif agent == "opencode":
-        results.append(install_md_block(target, "AGENTS.md"))
-    elif agent == "gemini":
-        results.append(install_md_block(target, "GEMINI.md"))
-    elif agent == "all":
-        results.append(install_claude_hook(target))
-        results.append(install_md_block(target, "AGENTS.md"))
-        results.append(install_md_block(target, "CLAUDE.md"))
-        results.append(install_md_block(target, "GEMINI.md"))
+    if agent == "all":
+        selected = list(ADAPTERS)
+    elif agent == "detected":
+        found = detect_adapters()
+        selected = [a for a in ADAPTERS if found.get(a.id)]
+        generic = get_adapter("generic")
+        if generic is not None:
+            selected.append(generic)
     else:
-        raise ValueError(f"unknown agent target: {agent}")
+        adapter = get_adapter(agent)
+        if adapter is None:
+            raise ValueError(
+                f"unknown agent target: {agent} "
+                f"(try one of the adapter ids, 'all', or 'detected')")
+        selected = [adapter]
+
+    # dedupe: hooks once, instruction files once each
+    results: list[tuple[bool, str]] = []
+    done_hook = False
+    done_files: set[str] = set()
+    for adapter in selected:
+        if adapter.hook and not done_hook:
+            results.append(install_claude_hook(target))
+            done_hook = True
+        for rel in adapter.instruction_files:
+            if rel in done_files:
+                continue
+            done_files.add(rel)
+            results.append(_install_instruction_file(target, rel))
     return results

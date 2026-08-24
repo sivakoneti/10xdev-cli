@@ -45,7 +45,8 @@ from .context import build_context, render_markdown
 from .execbrief import build_exec_brief
 from .discovery import (TENXLINK, code_root, env_project_root,
                         find_project_root, harness_root, is_initialized)
-from .hooks import install as install_hook
+from .adapters import adapter_ids, detect_adapters, get_adapter
+from .hooks import bootstrap_snippet, install as install_hook
 from .nextup import compute_next, render_next
 from .rules import rebuild_convention_index, validate
 from .skills import install_skills, list_skills
@@ -473,6 +474,38 @@ def cmd_exec(args: argparse.Namespace) -> int:
 
 
 def cmd_hook(args: argparse.Namespace) -> int:
+    if args.hook_cmd == "detect":
+        from .adapters import ADAPTERS
+
+        found = detect_adapters()
+        rows = []
+        for a in ADAPTERS:
+            hit = found.get(a.id)
+            rows.append({"id": a.id, "name": a.name,
+                         "detected": bool(hit), "bin": hit,
+                         "files": list(a.instruction_files),
+                         "hook": a.hook})
+        if args.json:
+            print(json.dumps(rows, indent=2))
+            return 0
+        width = max(len(r["id"]) for r in rows)
+        print(f"{'ADAPTER':<{width}}  {'STATUS':<9} TARGETS")
+        for r in rows:
+            status = f"found: {r['bin']}" if r["detected"] else "not found"
+            targets = ", ".join(r["files"])
+            if r["hook"]:
+                targets = f"{r['hook']} + {targets}"
+            print(f"{r['id']:<{width}}  {status:<9} {targets}")
+        n = sum(1 for r in rows if r["detected"])
+        print(f"\n{n}/{len(rows)} harnesses detected on PATH. "
+              f"`tenx hook install --agent detected` wires those; "
+              f"`--agent all` wires every file-based target.")
+        return 0
+    if args.hook_cmd == "bootstrap":
+        # Harness-agnostic bootstrap: works for ANY agent that can run a
+        # shell command. No project root needed.
+        sys.stdout.write(bootstrap_snippet() + "\n")
+        return 0
     root = _root_or_die(args.root)
     if args.hook_cmd == "install":
         _require_init(root)
@@ -638,12 +671,15 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(func=cmd_skills)
 
     sp = sub.add_parser("hook", help="session-start hook emit/install")
-    sp.add_argument("hook_cmd", nargs="?", choices=["emit", "install"],
+    sp.add_argument("hook_cmd", nargs="?",
+                    choices=["emit", "install", "bootstrap", "detect"],
                     default="emit")
     sp.add_argument("--mode", choices=["operator", "agent"], default="agent")
     sp.add_argument("--agent",
-                    choices=["claude", "codex", "opencode", "gemini", "all"],
-                    default="all")
+                    choices=adapter_ids() + ["all", "detected"],
+                    default="all",
+                    help="adapter id, 'all', or 'detected' (only harnesses "
+                         "whose binary is on PATH)")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_hook)
 

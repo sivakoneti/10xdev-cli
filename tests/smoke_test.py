@@ -136,6 +136,39 @@ def main() -> int:
         tenx("skills", "install", cwd=proj)
         check("process skill installed",
               (proj / ".claude/skills/tenx-process/SKILL.md").is_file())
+        # harness breadth: every supported target installs
+        for agent, rel in [("cursor", ".cursor/rules/tenx.mdc"),
+                           ("cline", ".clinerules/tenx.md"),
+                           ("windsurf", ".windsurfrules"),
+                           ("copilot", ".github/copilot-instructions.md"),
+                           ("continue", ".continuerules"),
+                           ("generic", "AGENTS.md")]:
+            tenx("hook", "install", "--agent", agent, cwd=proj)
+            check(f"hook target {agent}", (proj / rel).is_file())
+        out = tenx("hook", "bootstrap", cwd=proj).stdout
+        check("bootstrap is harness-agnostic",
+              "tenx context --mode agent" in out
+              and "tenx validate" in out)
+        # adapter registry (OpenDesign-style data-driven adapters)
+        out = tenx("hook", "detect", "--json", cwd=proj).stdout
+        rows = json.loads(out)
+        ids = {r["id"] for r in rows}
+        check("adapter catalog breadth",
+              {"claude", "codex", "hermes", "prime-agent",
+               "deepseek-harness", "generic"} <= ids)
+        check("detect rows typed",
+              all("detected" in r and "files" in r for r in rows))
+        tenx("hook", "install", "--agent", "detected", cwd=proj)
+        check("detected install ok",
+              (proj / "AGENTS.md").is_file())
+        tenx("hook", "install", "--agent", "kiro", cwd=proj)
+        check("kiro steering file",
+              (proj / ".kiro/steering/tenx.md").is_file())
+        tenx("hook", "install", "--agent", "qwen", cwd=proj)
+        check("qwen instruction file", (proj / "QWEN.md").is_file())
+        r = tenx("hook", "install", "--agent", "no-such-harness",
+                 cwd=proj, expect_rc=2)
+        check("unknown adapter rejected", r.returncode == 2)
 
         print("== show / doctor ==")
         out = tenx("show", "SPC-001", cwd=proj).stdout
