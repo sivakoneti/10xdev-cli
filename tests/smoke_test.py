@@ -305,6 +305,36 @@ def main() -> int:
         check("sync fails cleanly without origin remote",
               r.returncode == 2 and "Traceback" not in r.stderr)
 
+        # ---- packet budget + session logging ----
+        full = tenx("context", "--mode", "agent", cwd=scanproj).stdout
+        small = tenx("context", "--mode", "agent", "--budget", "900",
+                     cwd=scanproj).stdout
+        check("budget shrinks packet", len(small) < len(full))
+        check("budget keeps protocol",
+              "Operating protocol" in small)
+        check("budget notes omitted sections",
+              ("omitted sections" in small)
+              or ("truncated" in small)
+              or len(small) <= 900 + 400)
+        # apply_budget pure function
+        sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+        from tenx.context import apply_budget, TRUNCATE_MARKER
+        kept, omitted = apply_budget([("a", "x" * 100), ("b", "y" * 100),
+                                     ("c", "z" * 100)], 250)
+        check("apply_budget keeps whole sections",
+              [n for n, _ in kept][0] == "a" and "c" in omitted)
+        check("apply_budget pure (no mutation)",
+              len(omitted) + len(kept) == 3)
+        # session logging throttle
+        tenx("hook", "emit", "--no-log", cwd=scanproj)
+        tenx("hook", "emit", cwd=scanproj)
+        tenx("hook", "emit", cwd=scanproj)
+        hist = tenx("history", "--json", cwd=scanproj).stdout
+        entries = json.loads(hist)
+        n_session = sum(1 for e in entries if e.get("type") == "session")
+        check("session entries throttled to one", n_session == 1,
+              f"got {n_session}")
+
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

@@ -147,7 +147,7 @@ tickets:
 ```bash
 tenx init [--bootstrap]          # scaffold .tenx/ in this project
 tenx context --mode operator     # human dashboard
-tenx context --mode agent        # full session-start context packet
+tenx context --mode agent [--budget N]  # full packet; --budget truncates low-priority sections
 tenx status                      # alias for the operator dashboard
 tenx new <epic|spec|convention|doc> "Title" [--epic EPC-001]
 tenx show <ID> [--json]          # full artifact, metadata + body
@@ -161,7 +161,7 @@ tenx next [--json]               # prioritized work queue (the self-improving lo
 tenx scan [--json] [--write]     # map the codebase; --write stores it as a DOC
 tenx sync push|pull [--spec SPC-xxx] [--dry-run] [--json]
 tenx skills list|install [--target DIR]
-tenx hook [--mode agent]         # emit the packet (used by the SessionStart hook)
+tenx hook [--mode agent] [--budget N] [--no-log]  # emit the packet; logs a throttled session entry
 tenx hook install --agent <id|all|detected>  # see `tenx hook detect`
 tenx doctor                      # health check
 ```
@@ -178,6 +178,24 @@ one command and every later session starts with the map in the packet.
 tenx init --bootstrap
 tenx scan            # read the map
 tenx scan --write    # store it as .tenx/docs/DOC-xxx-codebase-map.md
+```
+
+### Keep packets cheap and auditable
+
+Large projects bloat the session-start packet. `--budget N` keeps
+sections whole while they fit, in priority order (workspace →
+validation → conventions → epics → specs → docs → activity), cuts the
+first section that overflows with a pointer to `tenx show <ID>`, and
+lists omitted sections at the end. The operating protocol is always
+kept. Header + protocol are protected from the budget.
+
+Every `tenx hook emit` also writes a throttled `session` entry to the
+activity log (at most one per hour), so `tenx history` shows when
+agents actually booted with context. Use `--no-log` to opt out.
+
+```bash
+tenx context --mode agent --budget 1500
+tenx hook emit --budget 1500
 ```
 
 ### Multiplayer: sync tickets to GitHub Issues

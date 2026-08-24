@@ -57,3 +57,31 @@ def read_entries(project_root: Path, limit: int | None = None) -> list[dict[str,
     if limit is not None:
         out = out[-limit:]
     return out
+
+
+def log_session(project_root: Path, throttle_minutes: int = 60,
+                actor: str = "agent") -> bool:
+    """Append a `session` entry unless one was written within the throttle.
+
+    Returns True if an entry was appended, False if throttled. Keeps
+    SessionStart noise out of the history while preserving an audit
+    trail of when agents booted with context.
+    """
+    from datetime import datetime, timedelta
+
+    entries = read_entries(project_root)
+    if entries and throttle_minutes > 0:
+        last_session = next((e for e in reversed(entries)
+                             if e.get("type") == "session"), None)
+        if last_session:
+            try:
+                ts = datetime.fromisoformat(str(last_session.get("ts", "")))
+            except ValueError:
+                ts = None
+            if ts is not None:
+                now = datetime.fromisoformat(now_iso())
+                if now - ts < timedelta(minutes=throttle_minutes):
+                    return False
+    append_entry(project_root, "session-start context packet emitted",
+                 entry_type="session", actor=actor)
+    return True

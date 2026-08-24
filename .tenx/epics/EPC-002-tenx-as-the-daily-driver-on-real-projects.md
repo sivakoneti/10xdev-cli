@@ -2,7 +2,7 @@
 id: EPC-002
 type: epic
 title: tenx as the daily driver on real projects
-status: in_progress
+status: complete
 created: 2026-08-24
 updated: 2026-08-24
 ---

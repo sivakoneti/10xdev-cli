@@ -110,9 +110,46 @@ def build_context(project_root: Path, mode: str = "agent",
     return data
 
 
+TRUNCATE_MARKER = "... [truncated: over budget — run `tenx show <ID>` for full text]"
+
+
+def apply_budget(sections: list[tuple[str, str]],
+                 budget: int) -> tuple[list[tuple[str, str]], list[str]]:
+    """Keep priority-ordered sections whole while they fit in `budget`.
+
+    The first section that overflows is cut with TRUNCATE_MARKER; all
+    later sections are dropped and their names returned as `omitted`.
+    Pure function: no I/O.
+    """
+    if budget <= 0:
+        return [], [name for name, _ in sections]
+    kept: list[tuple[str, str]] = []
+    omitted: list[str] = []
+    used = 0
+    cut = False
+    for name, text in sections:
+        cost = len(text) + 1  # + newline
+        if cut:
+            omitted.append(name)
+            continue
+        if used + cost <= budget:
+            kept.append((name, text))
+            used += cost
+        else:
+            room = budget - used - len(TRUNCATE_MARKER) - 1
+            if room > 80:  # only cut if a useful fragment fits
+                kept.append((name, text[:room] + "\n" + TRUNCATE_MARKER))
+                used = budget
+            else:
+                omitted.append(name)
+            cut = True
+    return kept, omitted
+
+
 def render_markdown(project_root: Path, mode: str = "agent",
                     harness: Harness | None = None,
-                    ruleset: RuleSet | None = None) -> str:
+                    ruleset: RuleSet | None = None,
+                    budget: int | None = None) -> str:
     data = build_context(project_root, mode, harness, ruleset)
     name = data["project"]
     lines: list[str] = []
@@ -147,13 +184,14 @@ def render_markdown(project_root: Path, mode: str = "agent",
         return "\n".join(lines) + "\n"
 
     # ---- agent mode: full packet ----
-    lines.append(f"# TENX CONTEXT PACKET — {name}")
+    header = f"# TENX CONTEXT PACKET — {name}"
     if data["description"]:
-        lines.append(f"\n{data['description']}")
+        header += f"\n\n{data['description']}"
+
     code_line = ""
     if data["code_root"] != data["project_root"]:
         code_line = f"- Code repo (governed): `{data['code_root']}`\n"
-    lines.append(
+    workspace = (
         f"\n## Workspace\n"
         f"- Project root: `{data['project_root']}`\n"
         f"{code_line}"
@@ -163,48 +201,85 @@ def render_markdown(project_root: Path, mode: str = "agent",
         f"{data['counts']['specs']} specs, {data['counts']['conventions']} conventions, "
         f"{data['counts']['docs']} docs")
 
+    v = data["validation"]
+    if v["errors"] or v["warnings"]:
+        validation = "\n## Validation state (fix what you can)"
+        for f in v["errors"]:
+            validation += f"\n- ERROR {f['message']}"
+        for f in v["warnings"]:
+            validation += f"\n- WARN  {f['message']}"
+    else:
+        validation = "\n## Validation state\n- clean: no errors or drift warnings"
+
+    conventions = ""
+    if data["conventions"]:
+        conventions = "\n## Conventions (MUST follow — read before coding)"
+        conventions += f"\n- Index: `{data['harness_root']}/conventions/INDEX.md`"
+        for c in data["conventions"]:
+            conventions += (f"\n- **{c['id']}** {c['title']} "
+                            f"`[{c['status']}]` — `{c['path']}`")
+
+    epics_sec = ""
     if data["epics"]:
-        lines.append("\n## Epics (what we are building)")
+        epics_sec = "\n## Epics (what we are building)"
         for e in data["epics"]:
             spec_list = ", ".join(e["specs"]) if e["specs"] else "no specs yet"
-            lines.append(f"- **{e['id']}** {e['title']} `[{e['status']}]` "
-                         f"— `{e['path']}` (specs: {spec_list})")
+            epics_sec += (f"\n- **{e['id']}** {e['title']} `[{e['status']}]` "
+                          f"— `{e['path']}` (specs: {spec_list})")
+
+    specs_sec = ""
     if data["specs"]:
-        lines.append("\n## Specs (ticket-by-ticket plans)")
+        specs_sec = "\n## Specs (ticket-by-ticket plans)"
         for s in data["specs"]:
             drift = ""
             if s["derived_status"] and s["derived_status"] != s["status"]:
                 drift = f" ⚠ derived={s['derived_status']}"
-            lines.append(
-                f"- **{s['id']}** {s['title']} `[{s['status']}]` epic={s['epic']} "
+            specs_sec += (
+                f"\n- **{s['id']}** {s['title']} `[{s['status']}]` epic={s['epic']} "
                 f"tickets {s['tickets_done']}/{s['tickets_total']} done{drift} "
                 f"— `{s['path']}`")
-    if data["conventions"]:
-        lines.append("\n## Conventions (MUST follow — read before coding)")
-        lines.append(f"- Index: `{data['harness_root']}/conventions/INDEX.md`")
-        for c in data["conventions"]:
-            lines.append(f"- **{c['id']}** {c['title']} `[{c['status']}]` — `{c['path']}`")
-    if data["docs"]:
-        lines.append("\n## Docs")
-        for d in data["docs"]:
-            lines.append(f"- **{d['id']}** {d['title']} — `{d['path']}`")
 
+    docs_sec = ""
+    if data["docs"]:
+        docs_sec = "\n## Docs"
+        for d in data["docs"]:
+            docs_sec += f"\n- **{d['id']}** {d['title']} — `{d['path']}`"
+
+    activity = ""
     if data["recent_activity"]:
-        lines.append("\n## Recent activity (latest first)")
+        activity = "\n## Recent activity (latest first)"
         for e in reversed(data["recent_activity"]):
             ref = f" ({e['ref']})" if e.get("ref") else ""
-            lines.append(f"- {e.get('ts', '?')[:16]} [{e.get('type', '?')}]{ref} "
+            activity += (f"\n- {e.get('ts', '?')[:16]} [{e.get('type', '?')}]{ref} "
                          f"{e.get('message', '')}")
 
-    v = data["validation"]
-    if v["errors"] or v["warnings"]:
-        lines.append("\n## Validation state (fix what you can)")
-        for f in v["errors"]:
-            lines.append(f"- ERROR {f['message']}")
-        for f in v["warnings"]:
-            lines.append(f"- WARN  {f['message']}")
-    else:
-        lines.append("\n## Validation state\n- clean: no errors or drift warnings")
+    # priority order per SPC-004: identity/config -> validation ->
+    # conventions -> artifact summaries (epics, specs, docs) -> activity
+    sections = [
+        ("workspace", workspace),
+        ("validation", validation),
+        ("conventions", conventions),
+        ("epics", epics_sec),
+        ("specs", specs_sec),
+        ("docs", docs_sec),
+        ("recent-activity", activity),
+    ]
+    sections = [(n, t) for n, t in sections if t]
 
+    omitted_note = ""
+    if budget is not None:
+        # header + protocol are protected; budget covers the sections
+        reserved = len(header) + len(PROTOCOL) + 4
+        sections, omitted = apply_budget(sections,
+                                         max(0, budget - reserved))
+        if omitted:
+            omitted_note = ("\n\n[packet budget] omitted sections: "
+                            + ", ".join(omitted)
+                            + " — raise --budget or run `tenx show <ID>`")
+
+    lines = [header]
+    lines += [text for _, text in sections]
+    if omitted_note:
+        lines.append(omitted_note)
     lines.append("\n" + PROTOCOL)
     return "\n".join(lines) + "\n"

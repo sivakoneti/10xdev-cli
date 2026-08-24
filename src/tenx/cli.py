@@ -186,11 +186,12 @@ def cmd_context(args: argparse.Namespace) -> int:
     root = _root_or_die(args.root)
     _require_init(root)
     mode = args.mode
+    budget = getattr(args, "budget", None)
     if args.json:
         data = build_context(root, mode)
         print(json.dumps(data, indent=2, ensure_ascii=False, default=str))
     else:
-        sys.stdout.write(render_markdown(root, mode))
+        sys.stdout.write(render_markdown(root, mode, budget=budget))
     return 0
 
 
@@ -695,11 +696,15 @@ def cmd_hook(args: argparse.Namespace) -> int:
         return 0
     # emit
     _require_init(root)
+    if not getattr(args, "no_log", False):
+        from .activity import log_session
+        log_session(root)
     if args.json:
         print(json.dumps(build_context(root, args.mode), indent=2,
                          ensure_ascii=False, default=str))
     else:
-        sys.stdout.write(render_markdown(root, args.mode))
+        sys.stdout.write(render_markdown(root, args.mode,
+                                         budget=args.budget))
     return 0
 
 
@@ -769,6 +774,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("context", help="emit context packet")
     sp.add_argument("--mode", choices=["operator", "agent"], default="agent")
+    sp.add_argument("--budget", type=int, default=None,
+                    help="approx. char budget for the agent packet; "
+                         "low-priority sections are truncated/omitted")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_context)
 
@@ -866,6 +874,10 @@ def build_parser() -> argparse.ArgumentParser:
                     default="all",
                     help="adapter id, 'all', or 'detected' (only harnesses "
                          "whose binary is on PATH)")
+    sp.add_argument("--budget", type=int, default=None,
+                    help="approx. char budget for the emitted packet")
+    sp.add_argument("--no-log", action="store_true",
+                    help="do not write a throttled session entry on emit")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_hook)
 

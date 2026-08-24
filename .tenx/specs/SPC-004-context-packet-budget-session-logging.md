@@ -2,20 +2,20 @@
 id: SPC-004
 type: spec
 title: context packet budget + session logging
-status: draft
+status: complete
 epic: EPC-002
 created: 2026-08-24
 updated: 2026-08-24
 tickets:
   - id: SPC-004-T1
     title: apply_budget pure function
-    status: todo
+    status: done
   - id: SPC-004-T2
     title: --budget flag on context/hook emit
-    status: todo
+    status: done
   - id: SPC-004-T3
     title: throttled session logging on hook emit
-    status: todo
+    status: done
 ---
 
 ## Summary
