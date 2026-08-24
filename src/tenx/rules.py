@@ -32,6 +32,109 @@ from .yamlite import yamlite_load
 
 SEVERITIES = ("error", "warning", "info")
 
+# Single source of truth for every rule `tenx validate` can emit.
+# rule id -> (default severity, description). Printed by
+# `tenx validate --list-rules`; keep in sync with the _rule_* functions.
+RULE_CATALOG: dict[str, tuple[str, str]] = {
+    # -- harness / frontmatter -------------------------------------------
+    "harness-missing": ("error",
+                        "no .tenx/ harness found; run `tenx init` first"),
+    "frontmatter-parse": ("error",
+                          "artifact frontmatter is not parseable YAML"),
+    "frontmatter-required": ("error",
+                             "artifact is missing a required frontmatter "
+                             "field (id/type/title/status per type)"),
+    "type-unknown": ("error",
+                     "artifact type is not one of epic/spec/convention/doc"),
+    # -- ids --------------------------------------------------------------
+    "id-format": ("error",
+                  "artifact id must look like EPC-001 / SPC-001 / CON-001 / "
+                  "DOC-001"),
+    "id-type-mismatch": ("error",
+                         "artifact id prefix does not match its type"),
+    "id-unique": ("error", "two artifacts share the same id"),
+    "id-filename-mismatch": ("warning",
+                             "artifact filename does not start with its id "
+                             "(manual rename broke navigation)"),
+    # -- statuses ---------------------------------------------------------
+    "status-valid": ("error",
+                     "artifact status missing or not in the allowed "
+                     "vocabulary"),
+    "dates-monotonic": ("warning",
+                        "artifact `updated` date is before its `created` "
+                        "date"),
+    # -- structure refs ---------------------------------------------------
+    "epic-ref": ("error",
+                 "spec has no epic reference or references an unknown epic"),
+    "convention-index": ("warning",
+                         "conventions/INDEX.md drifts from the convention "
+                         "files (run `tenx validate --fix`)"),
+    "convention-empty-body": ("warning",
+                              "convention body has too little content to be "
+                              "followed (param: min_convention_chars)"),
+    "config-code-root": ("error",
+                         "config declares a code_root that does not exist"),
+    # -- tickets ----------------------------------------------------------
+    "ticket-id": ("error", "spec ticket without an id"),
+    "ticket-id-unique": ("error", "duplicate ticket id within one spec"),
+    "ticket-status-valid": ("error",
+                            "ticket status not in todo/in_progress/"
+                            "in_review/done/blocked"),
+    "ticket-id-prefix": ("warning",
+                         "ticket id should be '<SPEC-ID>-T<n>' — GitHub "
+                         "sync markers depend on it"),
+    "ticket-title-missing": ("info", "ticket has no title"),
+    # -- spec/epic discipline ---------------------------------------------
+    "orphan-spec": ("warning",
+                    "spec is in_progress/in_review/complete but defines no "
+                    "tickets"),
+    "spec-missing-sections": ("warning",
+                              "spec body lacks required sections "
+                              "(param: spec_sections, default "
+                              "Summary,Validation)"),
+    "derived-status-drift": ("warning",
+                             "authored spec status disagrees with the status "
+                             "derived from its tickets (the 10X checkpoint "
+                             "rule; also surfaces as info when all tickets "
+                             "are done but the spec is not promoted)"),
+    "epic-no-specs": ("info",
+                      "active epic has no specs yet"),
+    "epic-progress-drift": ("warning",
+                            "epic status disagrees with its specs' statuses "
+                            "(also surfaces as info when all specs are done "
+                            "but the epic is not promoted)"),
+    "archived-epic-active-specs": ("warning",
+                                   "epic is archived but one or more of its "
+                                   "specs are not"),
+    # -- time / activity ----------------------------------------------------
+    "stale-artifact": ("info",
+                       "artifact sat in_review longer than stale_days "
+                       "(param: stale_days)"),
+    "log-quiet": ("info",
+                  "no activity logged for quiet_days (param: quiet_days)"),
+    "log-progress-no-ref": ("info",
+                            "progress log entry has no artifact ref — "
+                            "write-back should reference an artifact"),
+    "blocker-unresolved": ("info",
+                           "recent blocker log entry has no follow-up "
+                           "progress/decision entry (param: blocker_days)"),
+}
+
+
+def list_rules_text() -> str:
+    """Human-readable rule catalog for `tenx validate --list-rules`."""
+    width = max(len(r) for r in RULE_CATALOG)
+    lines = [f"# tenx validate — rule catalog ({len(RULE_CATALOG)} rules)",
+             "",
+             f"{'RULE':<{width}}  {'DEFAULT':<8} DESCRIPTION"]
+    for rid, (sev, desc) in RULE_CATALOG.items():
+        lines.append(f"{rid:<{width}}  {sev:<8} {desc}")
+    lines.append("")
+    lines.append("Override per project in .tenx/rules.yaml: "
+                 "`disable: [<rule>]`, `severity: {<rule>: <sev>}`, "
+                 "`params: {<name>: <value>}`.")
+    return "\n".join(lines) + "\n"
+
 
 @dataclass
 class Finding:
@@ -400,20 +503,16 @@ def _rule_config_code_root(project_root: Path, rs: RuleSet) -> None:
         cfg = yamlite_load(cfg_path.read_text(encoding="utf-8")) or {}
     except Exception:
         return
-    if not cfg.get("standalone"):
-        return
     code_root_val = cfg.get("code_root")
     if not code_root_val:
-        rs.add("config-code-root", "error",
-               "config declares standalone: true but has no code_root",
-               path=str(cfg_path))
-        return
-    cr = Path(str(code_root_val))
+        return  # co-located harness: nothing to check
+    cr = Path(str(code_root_val)).expanduser()
     if not cr.is_absolute():
         cr = (project_root / cr)
     if not cr.resolve().is_dir():
         rs.add("config-code-root", "error",
-               f"config code_root '{code_root_val}' does not exist",
+               f"config code_root '{code_root_val}' does not exist "
+               "(discovery silently falls back to the harness host)",
                path=str(cfg_path))
 
 

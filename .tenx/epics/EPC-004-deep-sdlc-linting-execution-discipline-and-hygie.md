@@ -2,7 +2,7 @@
 id: EPC-004
 type: epic
 title: deep SDLC linting — execution discipline and hygiene rules
-status: in_progress
+status: complete
 created: 2026-08-24
 updated: 2026-08-24
 ---

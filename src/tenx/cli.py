@@ -48,7 +48,7 @@ from .discovery import (TENXLINK, code_root, env_project_root,
 from .adapters import adapter_ids, detect_adapters, get_adapter
 from .hooks import bootstrap_snippet, install as install_hook
 from .nextup import compute_next, render_next
-from .rules import rebuild_convention_index, validate
+from .rules import RULE_CATALOG, list_rules_text, rebuild_convention_index, validate
 from .skills import install_skills, list_skills
 from .templates import BODY_TEMPLATES, CODE_ROOT_COMMENT, CONFIG_TEMPLATE, HARNESS_README
 from .yamlite import dump_frontmatter
@@ -319,7 +319,8 @@ def cmd_sync(args: argparse.Namespace) -> int:
                 root,
                 f"github sync push to {repo}: {created} created, "
                 f"{updated} updated",
-                entry_type="progress")
+                entry_type="progress",
+                ref=args.spec.upper() if args.spec else None)
         if args.json:
             print(json.dumps({"repo": repo, "actions": done}, indent=2,
                              default=str))
@@ -359,7 +360,8 @@ def cmd_sync(args: argparse.Namespace) -> int:
         append_entry(root,
                      f"github sync pull from {repo}: {changed} ticket(s) "
                      f"updated from issue state",
-                     entry_type="progress")
+                     entry_type="progress",
+                     ref=args.spec.upper() if args.spec else None)
     if args.json:
         print(json.dumps({"repo": repo, "actions": actions,
                           "changed": changed}, indent=2))
@@ -659,6 +661,15 @@ def cmd_ticket(args: argparse.Namespace) -> int:
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
+    if getattr(args, "list_rules", False):
+        if args.json:
+            print(json.dumps(
+                [{"rule": rid, "default_severity": sev, "description": desc}
+                 for rid, (sev, desc) in RULE_CATALOG.items()],
+                indent=2, ensure_ascii=False))
+        else:
+            sys.stdout.write(list_rules_text())
+        return 0
     root = _root_or_die(args.root)
     _require_init(root)
     harness = load_harness(root)
@@ -978,6 +989,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("validate", help="lint the SDLC")
     sp.add_argument("--fix", action="store_true",
                     help="apply safe fixes (rebuild convention INDEX.md)")
+    sp.add_argument("--list-rules", action="store_true",
+                    help="print the rule catalog and exit (no linting)")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_validate)
 

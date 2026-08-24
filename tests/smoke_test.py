@@ -421,6 +421,64 @@ def main() -> int:
               "ticket-id-prefix" not in rules_in(rulesproj))
         shutil.rmtree(rulesproj, ignore_errors=True)
 
+        # ---- SPC-008 hygiene rules + rule catalog ----
+        hyg = Path(tempfile.mkdtemp(prefix="tenx-hyg-"))
+        code_repo = hyg / "code"
+        code_repo.mkdir()
+        tenx("init", "--standalone", "--code-root", str(code_repo),
+             "--name", "hyg", cwd=hyg)
+        tenx("new", "convention", "Tiny rule", cwd=hyg)
+        confile = next((hyg / ".tenx/conventions").glob("CON-*.md"))
+        t = confile.read_text()
+        fm_end = t.index("---", 3) + 3
+        confile.write_text(t[:fm_end] + "\n## Rule\n\nShort.\n")
+        tenx("new", "doc", "Renamed doc", cwd=hyg)
+        docfile = next((hyg / ".tenx/docs").glob("DOC-*.md"))
+        docfile.rename(docfile.parent / "renamed-doc.md")
+        tenx("log", "progress without ref", "--type", "progress", cwd=hyg)
+        tenx("log", "stuck on something", "--type", "blocker",
+             "--ref", "DOC-001", cwd=hyg)
+        found = rules_in(hyg)
+        check("rule convention-empty-body fires",
+              "convention-empty-body" in found)
+        check("rule id-filename-mismatch fires",
+              "id-filename-mismatch" in found)
+        check("rule log-progress-no-ref fires",
+              "log-progress-no-ref" in found)
+        check("rule blocker-unresolved fires",
+              "blocker-unresolved" in found)
+        # blocker resolved by a later progress entry on the same ref
+        tenx("log", "unblocked", "--type", "progress", "--ref", "DOC-001",
+             cwd=hyg)
+        check("blocker-unresolved clears after follow-up",
+              "blocker-unresolved" not in rules_in(hyg))
+        # config-code-root: break code_root -> error
+        cfg = hyg / ".tenx/config.yaml"
+        cfg.write_text(cfg.read_text().replace(
+            "code_root: code", "code_root: does-not-exist"))
+        d = json.loads(tenx("validate", "--json", cwd=hyg,
+                            expect_rc=1).stdout)
+        check("rule config-code-root fires as error",
+              any(e["rule"] == "config-code-root" for e in d["errors"]))
+        shutil.rmtree(hyg, ignore_errors=True)
+        # rule catalog: --list-rules works anywhere, covers every rule
+        out = tenx("validate", "--list-rules", cwd=tmp).stdout
+        check("list-rules prints catalog",
+              "rule catalog" in out and "derived-status-drift" in out)
+        cat = json.loads(tenx("validate", "--list-rules", "--json",
+                              cwd=tmp).stdout)
+        cat_ids = {r["rule"] for r in cat}
+        check("catalog typed rows",
+              all("default_severity" in r and "description" in r
+                  for r in cat))
+        # every rule the smoke project can emit is in the catalog
+        d = json.loads(tenx("validate", "--json", cwd=scanproj).stdout)
+        emitted = {f["rule"] for k in ("errors", "warnings", "info")
+                   for f in d.get(k, [])}
+        check("catalog covers emitted rules", emitted <= cat_ids,
+              str(emitted - cat_ids))
+        check("catalog has 29 rules", len(cat) == 29, str(len(cat)))
+
         # ---- tenx review + archive ----
         tenx("new", "epic", "Review epic", cwd=scanproj)
         tenx("new", "spec", "Review spec", "--epic", "EPC-001",
