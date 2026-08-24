@@ -238,6 +238,137 @@ def cmd_scan(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_sync(args: argparse.Namespace) -> int:
+    from . import sync as syncmod
+    from .activity import append_entry
+    from .artifacts import load_harness
+
+    root = _root_or_die(args.root)
+    _require_init(root)
+    harness = load_harness(root)
+    if args.spec:
+        spec = harness.get(args.spec.upper())
+        if spec is None or spec.type != "spec":
+            print(f"tenx: unknown spec {args.spec}", file=sys.stderr)
+            return 2
+        specs = [spec]
+    else:
+        specs = [s for s in harness.by_type("spec") if s.tickets]
+
+    try:
+        token = syncmod.resolve_token()
+        repo = syncmod.resolve_repo(root, harness.config)
+    except syncmod.SyncError as e:
+        print(f"tenx sync: {e}", file=sys.stderr)
+        return 2
+
+    try:
+        issues = syncmod.list_issues(token, repo)
+    except syncmod.SyncError as e:
+        print(f"tenx sync: {e}", file=sys.stderr)
+        return 1
+
+    if args.direction == "push":
+        actions = syncmod.plan_push(specs, issues, project_root=root)
+        if args.dry_run:
+            if args.json:
+                print(json.dumps({"repo": repo, "dry_run": True,
+                                  "actions": actions}, indent=2,
+                                 default=str))
+            else:
+                print(f"# tenx sync push — {repo} (dry run)")
+                for a in actions:
+                    if a["action"] == "skip":
+                        print(f"  =  {a['ticket']} #{a.get('number')} "
+                              f"already in sync")
+                    elif a["action"] == "create":
+                        print(f"  +  {a['ticket']} create: {a['title']}")
+                    else:
+                        print(f"  ~  {a['ticket']} #{a.get('number')} "
+                              f"update {sorted(a['changes'])}")
+            return 0
+        # execute
+        label_names = {syncmod.BASE_LABEL}
+        for a in actions:
+            if a["action"] == "create":
+                label_names.update(a["labels"])
+            elif a["action"] == "update" and "labels" in a["changes"]:
+                label_names.update(a["changes"]["labels"])
+        syncmod.ensure_labels(token, repo, sorted(label_names))
+        done = []
+        for a in actions:
+            if a["action"] == "create":
+                it = syncmod.create_issue(token, repo, a["title"],
+                                          a["body"], a["labels"])
+                if a["state"] == "closed":
+                    syncmod.update_issue(token, repo, it["number"],
+                                         {"state": "closed"})
+                done.append({**a, "number": it["number"],
+                             "url": it.get("html_url")})
+            elif a["action"] == "update":
+                syncmod.update_issue(token, repo, a["number"],
+                                     a["changes"])
+                done.append(a)
+            else:
+                done.append(a)
+        created = sum(1 for a in done if a["action"] == "create")
+        updated = sum(1 for a in done if a["action"] == "update")
+        if created or updated:
+            append_entry(
+                root,
+                f"github sync push to {repo}: {created} created, "
+                f"{updated} updated",
+                entry_type="progress")
+        if args.json:
+            print(json.dumps({"repo": repo, "actions": done}, indent=2,
+                             default=str))
+        else:
+            print(f"synced {repo}: {created} created, {updated} updated, "
+                  f"{len(done) - created - updated} in sync")
+        return 0
+
+    # pull
+    actions = syncmod.plan_pull(specs, issues)
+    if args.dry_run:
+        if args.json:
+            print(json.dumps({"repo": repo, "dry_run": True,
+                              "actions": actions}, indent=2))
+        else:
+            print(f"# tenx sync pull — {repo} (dry run)")
+            for a in actions:
+                print(f"  ~  {a['ticket']}: {a['from']} -> {a['to']} "
+                      f"(issue #{a.get('number')})")
+            if not actions:
+                print("  nothing to pull")
+        return 0
+    changed = 0
+    for a in actions:
+        spec = harness.get(a["spec"])
+        if spec is None:
+            continue
+        tickets = spec.meta.get("tickets") or []
+        for t in tickets:
+            if str(t.get("id")) == a["ticket"]:
+                t["status"] = a["to"]
+                changed += 1
+                break
+        from .artifacts import update_meta
+        update_meta(spec, {"tickets": tickets})
+    if changed:
+        append_entry(root,
+                     f"github sync pull from {repo}: {changed} ticket(s) "
+                     f"updated from issue state",
+                     entry_type="progress")
+    if args.json:
+        print(json.dumps({"repo": repo, "actions": actions,
+                          "changed": changed}, indent=2))
+    else:
+        for a in actions:
+            print(f"  {a['ticket']}: {a['from']} -> {a['to']}")
+        print(f"pulled {repo}: {changed} ticket(s) updated")
+    return 0
+
+
 def cmd_new(args: argparse.Namespace) -> int:
     root = _root_or_die(args.root)
     _require_init(root)
@@ -651,6 +782,15 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--write", action="store_true",
                     help="upsert the map as a DOC artifact in .tenx/docs/")
     sp.set_defaults(func=cmd_scan)
+
+    sp = sub.add_parser("sync", help="two-way sync between spec tickets "
+                                     "and GitHub Issues")
+    sp.add_argument("direction", choices=["push", "pull"])
+    sp.add_argument("--spec", help="limit to one spec (SPC-xxx)")
+    sp.add_argument("--dry-run", action="store_true",
+                    help="print the plan, touch nothing")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=cmd_sync)
 
     sp = sub.add_parser("new", help="create an artifact")
     sp.add_argument("type", choices=sorted(TYPE_PREFIX))

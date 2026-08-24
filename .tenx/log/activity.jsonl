@@ -11,3 +11,8 @@
 {"ts": "2026-08-24T14:48:24+00:00", "type": "progress", "actor": "agent", "message": "codebase map updated from tenx scan (24 files, stacks: python)", "ref": "DOC-002"}
 {"ts": "2026-08-24T14:49:25+00:00", "type": "progress", "actor": "agent", "message": "tenx scan --write upserts DOC tagged codebase-map + logs activity; fixed invalid 'current' status -> complete", "ref": "SPC-002"}
 {"ts": "2026-08-24T14:51:27+00:00", "type": "progress", "actor": "agent", "message": "smoke suite extended with 12 scan checks (mixed python+node scratch repo, --json shape, --write upsert); walker fixed to see empty dirs and .github", "ref": "SPC-002"}
+{"ts": "2026-08-24T14:55:31+00:00", "type": "progress", "actor": "agent", "message": "sync.py: token resolution (env > git-credentials) + repo resolution (config > origin remote) + urllib GitHub client (list/create/update/labels); all offline checks pass", "ref": "SPC-003"}
+{"ts": "2026-08-24T14:57:57+00:00", "type": "progress", "actor": "agent", "message": "tenx sync push --dry-run verified: plans 17 ticket->issue creates across SPC-001..004; fixed double-JSON flow bug", "ref": "SPC-003"}
+{"ts": "2026-08-24T14:59:17+00:00", "type": "progress", "actor": "agent", "message": "github sync push to sivakoneti/10xdev-cli: 17 created, 0 updated"}
+{"ts": "2026-08-24T15:01:12+00:00", "type": "progress", "actor": "agent", "message": "github sync pull from sivakoneti/10xdev-cli: 1 ticket(s) updated from issue state"}
+{"ts": "2026-08-24T15:02:46+00:00", "type": "progress", "actor": "agent", "message": "live dogfood complete: 17 issues created in sivakoneti/10xdev-cli, second push fully idempotent, remote close -> tenx sync pull -> ticket done locally (then restored); validate clean", "ref": "SPC-003"}

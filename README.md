@@ -159,6 +159,7 @@ tenx log "implemented webhook handler" --ref SPC-001 --type progress
 tenx history [--limit 20] [--json]
 tenx next [--json]               # prioritized work queue (the self-improving loop)
 tenx scan [--json] [--write]     # map the codebase; --write stores it as a DOC
+tenx sync push|pull [--spec SPC-xxx] [--dry-run] [--json]
 tenx skills list|install [--target DIR]
 tenx hook [--mode agent]         # emit the packet (used by the SessionStart hook)
 tenx hook install --agent <id|all|detected>  # see `tenx hook detect`
@@ -178,6 +179,28 @@ tenx init --bootstrap
 tenx scan            # read the map
 tenx scan --write    # store it as .tenx/docs/DOC-xxx-codebase-map.md
 ```
+
+### Multiplayer: sync tickets to GitHub Issues
+
+Spec tickets are the source of truth in `.tenx/`; `tenx sync` mirrors
+them to GitHub Issues so the team sees work where it already looks.
+
+```bash
+tenx sync push --dry-run   # preview the plan
+tenx sync push             # create/update one issue per ticket
+tenx sync pull             # map issue state back into ticket status
+```
+
+- Binding: issue titles carry a `[SPC-002-T1]` marker; push is
+  idempotent and reconciles state, labels (`tenx:todo` … `tenx:done`),
+  and the status line in the issue body.
+- Pull maps closed → `done` (and honors the body status line for open
+  issues), writing back through the same path as `tenx ticket`.
+- Repo resolution: `github_repo: owner/name` in `.tenx/config.yaml`,
+  else the `origin` remote. Token resolution: `TENX_GITHUB_TOKEN` >
+  `GITHUB_TOKEN` > `~/.git-credentials`. The token is never written
+  into `.tenx/` or the activity log.
+- Zero new dependencies (stdlib `urllib`).
 
 ### Spec-first autonomous execution
 

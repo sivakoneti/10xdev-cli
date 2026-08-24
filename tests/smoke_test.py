@@ -280,6 +280,31 @@ def main() -> int:
         check("scan validate clean",
               "clean" in tenx("validate", cwd=scanproj).stdout)
 
+        # ---- tenx sync (offline parts only; no network in smoke) ----
+        import importlib.util
+        spec_mod = importlib.util.spec_from_file_location(
+            "tenx_sync_smoke",
+            Path(__file__).parent.parent / "src" / "tenx" / "sync.py")
+        # sync.py uses relative-free imports at module level except none;
+        # load via package instead
+        sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+        from tenx.sync import repo_from_remote_url, MARKER_RE
+        check("sync parses https remote",
+              repo_from_remote_url(
+                  "https://github.com/foo/bar.git") == "foo/bar")
+        check("sync parses ssh remote",
+              repo_from_remote_url("git@github.com:foo/bar.git")
+              == "foo/bar")
+        check("sync rejects non-github remote",
+              repo_from_remote_url("https://gitlab.com/a/b.git") is None)
+        check("sync marker regex",
+              bool(MARKER_RE.match("[SPC-001-T2] some ticket"))
+              and not MARKER_RE.match("random issue title"))
+        # sync without token/repo fails cleanly (exit 2, no traceback)
+        r = tenx("sync", "push", "--dry-run", cwd=scanproj, expect_rc=2)
+        check("sync fails cleanly without origin remote",
+              r.returncode == 2 and "Traceback" not in r.stderr)
+
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

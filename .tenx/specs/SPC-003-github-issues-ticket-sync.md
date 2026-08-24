@@ -2,26 +2,26 @@
 id: SPC-003
 type: spec
 title: GitHub Issues ticket sync
-status: draft
+status: complete
 epic: EPC-002
 created: 2026-08-24
 updated: 2026-08-24
 tickets:
   - id: SPC-003-T1
     title: token + repo resolution helpers
-    status: todo
+    status: done
   - id: SPC-003-T2
     title: GitHub API client via urllib
-    status: todo
+    status: done
   - id: SPC-003-T3
     title: tenx sync push + --dry-run
-    status: todo
+    status: done
   - id: SPC-003-T4
     title: tenx sync pull + write-back
-    status: todo
+    status: done
   - id: SPC-003-T5
     title: live dogfood sync to sivakoneti/10xdev-cli
-    status: todo
+    status: done
 ---
 
 ## Summary
