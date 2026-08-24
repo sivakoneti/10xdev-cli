@@ -1,0 +1,9 @@
+# tenx harness configuration
+project: tenx
+description: "Meta-harness CLI: context-as-code for AI coding agents (the 10X meta-harness pattern, portable to any project)"
+# Optional: link the code repo this harness governs (default: parent of .tenx)
+# code_root: ..
+# Rule overrides for `tenx validate` (see rules.yaml defaults)
+rules:
+  stale_days: 14
+  quiet_days: 7
