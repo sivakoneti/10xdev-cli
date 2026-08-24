@@ -102,6 +102,14 @@ def load_rule_config(project_root: Path) -> tuple[set[str], dict[str, str], dict
         if isinstance(sev_block, dict):
             for rid, sev in sev_block.items():
                 overrides[str(rid)] = str(sev)
+        elif isinstance(sev_block, list):
+            # also accept the list-of-single-key-map form:
+            #   severity:
+            #     - stale-artifact: warning
+            for item in sev_block:
+                if isinstance(item, dict):
+                    for rid, sev in item.items():
+                        overrides[str(rid)] = str(sev)
         par_block = cfg.get("params") or {}
         if isinstance(par_block, dict):
             params.update(par_block)

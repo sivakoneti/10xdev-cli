@@ -174,6 +174,26 @@ def main() -> int:
         r = tenx("hook", "install", "--agent", "no-such-harness",
                  cwd=proj, expect_rc=2)
         check("unknown adapter rejected", r.returncode == 2)
+        # rules.yaml overrides (README-documented formats)
+        (proj / ".tenx" / "rules.yaml").write_text(
+            "disable:\n  - log-quiet\n"
+            "severity:\n  - derived-status-drift: warning\n"
+            "params:\n  stale_days: 21\n")
+        out = tenx("validate", "--json", cwd=proj).stdout
+        findings = json.loads(out)
+        if isinstance(findings, dict):
+            findings = findings.get("findings", [])
+        check("severity override applied",
+              all(f["severity"] != "info"
+                  for f in findings
+                  if f["rule"] == "derived-status-drift")
+              and any(f["rule"] == "derived-status-drift"
+                      and f["severity"] == "warning"
+                      for f in findings)
+              or not any(f["rule"] == "derived-status-drift"
+                         for f in findings))
+        check("disable override applied",
+              not any(f["rule"] == "log-quiet" for f in findings))
 
         print("== show / doctor ==")
         out = tenx("show", "SPC-001", cwd=proj).stdout

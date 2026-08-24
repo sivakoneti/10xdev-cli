@@ -60,7 +60,7 @@ engine installs and detects from those fields. Adding a harness is a
 one-entry change — no engine edits.
 
 ```bash
-tenx hook detect              # probe PATH for ~27 known harnesses
+tenx hook detect              # probe PATH for ~29 known harnesses
 tenx hook detect --json
 tenx hook install --agent detected   # wire only what's installed
 tenx hook install --agent hermes     # or any single adapter id
@@ -76,8 +76,8 @@ Injection tiers:
 2. **Auto-loaded instruction files** — the adapter catalog covers:
    claude, codex, opencode, cursor, gemini, cline, windsurf, copilot,
    continue, aider, amp, qoder, qwen, grok, deepseek, deepseek-harness
-   (dsh), prime-agent, devin, hermes, kimi, kiro, kilo, vibe, vela,
-   trae, pi, generic.
+   (dsh), prime-agent, omp (Oh My Pie), antigravity (agy), devin,
+   hermes, kimi, kiro, kilo, vibe, vela, trae, pi, generic.
 3. **Universal bootstrap** — for anything else: paste the output of
    `tenx hook bootstrap` into the harness's system prompt / custom
    instructions. That block is the entire integration; it only assumes
@@ -160,7 +160,7 @@ tenx history [--limit 20] [--json]
 tenx next [--json]               # prioritized work queue (the self-improving loop)
 tenx skills list|install [--target DIR]
 tenx hook [--mode agent]         # emit the packet (used by the SessionStart hook)
-tenx hook install --agent claude|codex|opencode|gemini|all
+tenx hook install --agent <id|all|detected>  # see `tenx hook detect`
 tenx doctor                      # health check
 ```
 
