@@ -46,6 +46,22 @@ From then on, every Claude Code session in the project starts with the full
 context packet injected, and Codex/OpenCode/Gemini agents are instructed via
 a managed `AGENTS.md` block to run it.
 
+### Alternative: standalone PM repo (the 10X layout)
+
+10X keeps their artifacts in a dedicated *project management repo*, separate
+from the code repos. tenx supports that layout first-class:
+
+```bash
+mkdir my-project-pm && cd my-project-pm && git init
+tenx init --standalone --code-root /path/to/code-repo --bootstrap
+tenx hook install --agent all      # hooks + AGENTS.md land in the CODE repo
+```
+
+Wiring: the harness config records `code_root:`; the code repo gets a
+`.tenxlink` pointer file back to the PM repo. From inside the code repo,
+every `tenx` command resolves the harness through the link automatically.
+Co-located (`.tenx/` inside the code repo) remains the default.
+
 ## The artifact types
 
 | Type | ID | Purpose |
@@ -98,9 +114,9 @@ tenx hook install --agent claude|codex|opencode|gemini|all
 tenx doctor                      # health check
 ```
 
-All read commands support `--json` for machine consumption. `TENX_ROOT`
-overrides project discovery; otherwise `tenx` walks up from cwd looking for
-`.tenx/` (then `.git`).
+All read commands support `--json` for machine consumption. Discovery
+order: `TENX_ROOT` env > `.tenx/` walking up > `.tenxlink` walking up >
+`.git` > cwd.
 
 ## The agent loop
 

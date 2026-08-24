@@ -14,6 +14,7 @@ from typing import Any
 
 from . import __version__
 from .activity import read_entries
+from .discovery import code_root
 from .artifacts import Harness, derived_status, load_harness
 from .rules import RuleSet, validate
 
@@ -62,6 +63,7 @@ def build_context(project_root: Path, mode: str = "agent",
         "description": cfg.get("description", ""),
         "project_root": str(project_root),
         "harness_root": str(harness.root),
+        "code_root": str(code_root(project_root, cfg)),
         "counts": {
             "epics": len(epics),
             "specs": len(specs),
@@ -148,9 +150,13 @@ def render_markdown(project_root: Path, mode: str = "agent",
     lines.append(f"# TENX CONTEXT PACKET — {name}")
     if data["description"]:
         lines.append(f"\n{data['description']}")
+    code_line = ""
+    if data["code_root"] != data["project_root"]:
+        code_line = f"- Code repo (governed): `{data['code_root']}`\n"
     lines.append(
         f"\n## Workspace\n"
         f"- Project root: `{data['project_root']}`\n"
+        f"{code_line}"
         f"- Harness (context base): `{data['harness_root']}/`\n"
         f"- CLI: tenx v{data['cli_version']} — use it; it is agent-facing.\n"
         f"- Artifacts: {data['counts']['epics']} epics, "

@@ -142,6 +142,34 @@ def main() -> int:
         check("show prints body", "Spec One" in out and "tickets" in out.lower())
         out = tenx("doctor", cwd=proj).stdout
         check("doctor healthy", "validation: 0 errors" in out, out)
+        print("== standalone PM repo (the 10X layout) ==")
+        pm = tmp / "pm-repo"
+        app = tmp / "app-repo"
+        pm.mkdir()
+        app.mkdir()
+        (app / "package.json").write_text('{"name":"app"}')
+        tenx("init", "--standalone", "--code-root", str(app),
+             "--name", "pm", cwd=pm)
+        check("tenxlink written", (app / ".tenxlink").is_file())
+        check("config has code_root",
+              "code_root:" in (pm / ".tenx/config.yaml").read_text())
+        tenx("new", "epic", "PM Epic", cwd=pm)
+        # discovery FROM the code repo follows the link
+        out = tenx("list", "--json", cwd=app).stdout
+        check("discovery via .tenxlink",
+              any(i["id"] == "EPC-001" for i in json.loads(out)))
+        # hooks land in the CODE repo, not the PM repo
+        tenx("hook", "install", "--agent", "all", cwd=pm)
+        check("claude hook in code repo",
+              (app / ".claude/settings.json").is_file())
+        check("AGENTS.md in code repo", (app / "AGENTS.md").is_file())
+        check("no AGENTS.md in PM repo", not (pm / "AGENTS.md").exists())
+        out = tenx("context", "--mode", "agent", cwd=app).stdout
+        check("packet names governed code repo", "Code repo (governed)" in out)
+        out = tenx("doctor", cwd=app).stdout
+        check("doctor shows code_root", "code repo (code_root)" in out, out)
+
+
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

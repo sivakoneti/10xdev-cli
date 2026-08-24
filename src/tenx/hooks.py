@@ -83,22 +83,27 @@ def install_md_block(project_root: Path, filename: str = "AGENTS.md") -> tuple[b
     return True, str(path)
 
 
-def install(project_root: Path, agent: str) -> list[tuple[bool, str]]:
+def install(project_root: Path, agent: str,
+            target_root: Path | None = None) -> list[tuple[bool, str]]:
+    """Install hooks into target_root (default: the code root for this harness)."""
+    from .discovery import code_root
+
+    target = target_root or code_root(project_root)
     results: list[tuple[bool, str]] = []
     if agent == "claude":
-        results.append(install_claude_hook(project_root))
-        results.append(install_md_block(project_root, "CLAUDE.md"))
+        results.append(install_claude_hook(target))
+        results.append(install_md_block(target, "CLAUDE.md"))
     elif agent == "codex":
-        results.append(install_md_block(project_root, "AGENTS.md"))
+        results.append(install_md_block(target, "AGENTS.md"))
     elif agent == "opencode":
-        results.append(install_md_block(project_root, "AGENTS.md"))
+        results.append(install_md_block(target, "AGENTS.md"))
     elif agent == "gemini":
-        results.append(install_md_block(project_root, "GEMINI.md"))
+        results.append(install_md_block(target, "GEMINI.md"))
     elif agent == "all":
-        results.append(install_claude_hook(project_root))
-        results.append(install_md_block(project_root, "AGENTS.md"))
-        results.append(install_md_block(project_root, "CLAUDE.md"))
-        results.append(install_md_block(project_root, "GEMINI.md"))
+        results.append(install_claude_hook(target))
+        results.append(install_md_block(target, "AGENTS.md"))
+        results.append(install_md_block(target, "CLAUDE.md"))
+        results.append(install_md_block(target, "GEMINI.md"))
     else:
         raise ValueError(f"unknown agent target: {agent}")
     return results

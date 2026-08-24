@@ -122,13 +122,15 @@ CLI quick reference (run from the project root):
 CONFIG_TEMPLATE = """# tenx harness configuration
 project: {project}
 description: "{description}"
-# Optional: link the code repo this harness governs (default: parent of .tenx)
-# code_root: ..
-# Rule overrides for `tenx validate` (see rules.yaml defaults)
+{code_root_line}# Rule overrides for `tenx validate` (see rules.yaml defaults)
 rules:
   stale_days: 14
   quiet_days: 7
 """
+
+# Comment used in co-located configs; standalone configs get a real value.
+CODE_ROOT_COMMENT = ("# code_root: the code repo this harness governs "
+                     "(hooks + AGENTS.md land there).\n# code_root: ..\n")
 
 # ---------------------------------------------------------------------------
 # Skills: markdown skill files, one per artifact type + process skills.

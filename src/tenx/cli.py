@@ -24,6 +24,7 @@ Command map (mirrors the 10X harness from the David Ondrej podcast):
 from __future__ import annotations
 
 import argparse
+import os
 import json
 import sys
 from pathlib import Path
@@ -41,12 +42,13 @@ from .artifacts import (
     update_meta,
 )
 from .context import build_context, render_markdown
-from .discovery import env_project_root, find_project_root, harness_root, is_initialized
+from .discovery import (TENXLINK, code_root, env_project_root,
+                        find_project_root, harness_root, is_initialized)
 from .hooks import install as install_hook
 from .nextup import compute_next, render_next
 from .rules import rebuild_convention_index, validate
 from .skills import install_skills, list_skills
-from .templates import BODY_TEMPLATES, CONFIG_TEMPLATE, HARNESS_README
+from .templates import BODY_TEMPLATES, CODE_ROOT_COMMENT, CONFIG_TEMPLATE, HARNESS_README
 from .yamlite import dump_frontmatter
 
 
@@ -84,15 +86,44 @@ def cmd_init(args: argparse.Namespace) -> int:
     desc = args.description or f"Context base for {name}"
     for sub in ("epics", "specs", "conventions", "docs", "log"):
         (hroot / sub).mkdir(parents=True, exist_ok=True)
+    code_root_line = CODE_ROOT_COMMENT
+    link_written: Path | None = None
+    if args.standalone:
+        if not args.code_root:
+            print("tenx: --standalone needs --code-root <path-to-code-repo>",
+                  file=sys.stderr)
+            return 2
+        code_path = Path(args.code_root).expanduser().resolve()
+        if not code_path.is_dir():
+            print(f"tenx: code root {code_path} is not a directory",
+                  file=sys.stderr)
+            return 2
+        try:
+            rel = Path(os.path.relpath(code_path, root))
+        except ValueError:
+            rel = code_path
+        code_root_line = f"code_root: {rel}\n"
+        # pointer in the code repo back to this PM repo
+        try:
+            back = Path(os.path.relpath(root, code_path))
+        except ValueError:
+            back = root
+        link = code_path / TENXLINK
+        if not link.exists() or args.force:
+            link.write_text(back.as_posix() + "\n", encoding="utf-8")
+            link_written = link
     cfg = hroot / "config.yaml"
     if not cfg.exists() or args.force:
-        cfg.write_text(CONFIG_TEMPLATE.format(project=name, description=desc),
+        cfg.write_text(CONFIG_TEMPLATE.format(project=name, description=desc,
+                                              code_root_line=code_root_line),
                        encoding="utf-8")
     readme = hroot / "README.md"
     if not readme.exists():
         readme.write_text(HARNESS_README, encoding="utf-8")
     print(f"Initialized tenx harness at {hroot}")
     print("  config.yaml, epics/, specs/, conventions/, docs/, log/")
+    if link_written is not None:
+        print(f"  wrote pointer {link_written} -> {root}")
 
     if args.bootstrap:
         harness = load_harness(root)
@@ -412,11 +443,14 @@ def cmd_hook(args: argparse.Namespace) -> int:
     root = _root_or_die(args.root)
     if args.hook_cmd == "install":
         _require_init(root)
+        target = code_root(root)
         try:
             results = install_hook(root, args.agent)
         except ValueError as exc:
             print(f"tenx: {exc}", file=sys.stderr)
             return 2
+        if target != root:
+            print(f"  hook target (code repo): {target}")
         for changed, path in results:
             verb = "updated" if changed else "unchanged"
             print(f"  {verb}: {path}")
@@ -448,20 +482,23 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         print("yaml backend: built-in yamlite (PyYAML not installed — fine)")
     if initialized:
         harness = load_harness(root)
+        cr = code_root(root, harness.config)
+        if cr != root:
+            print(f"code repo (code_root): {cr}")
         c = {t: len(harness.by_type(t)) for t in TYPE_PREFIX}
         print(f"artifacts: {c['epic']} epics, {c['spec']} specs, "
               f"{c['convention']} conventions, {c['doc']} docs")
         entries = read_entries(root)
         print(f"activity log: {len(entries)} entries")
-        claude_settings = root / ".claude" / "settings.json"
+        claude_settings = cr / ".claude" / "settings.json"
         hooked = False
         if claude_settings.is_file():
             hooked = "tenx context" in claude_settings.read_text(
                 encoding="utf-8", errors="replace")
         md_hooked = any(
-            "tenx:begin" in (root / f).read_text(encoding="utf-8")
+            "tenx:begin" in (cr / f).read_text(encoding="utf-8")
             for f in ("AGENTS.md", "CLAUDE.md", "GEMINI.md")
-            if (root / f).is_file())
+            if (cr / f).is_file())
         print(f"session hook: claude settings={'yes' if hooked else 'no'}, "
               f"managed md block={'yes' if md_hooked else 'no'}")
         rs = validate(root, harness)
@@ -486,6 +523,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--description", help="one-line project description")
     sp.add_argument("--bootstrap", action="store_true",
                     help="seed starter convention + architecture doc")
+    sp.add_argument("--standalone", action="store_true",
+                    help="this repo is a dedicated PM repo governing a "
+                         "separate code repo (the 10X layout)")
+    sp.add_argument("--code-root",
+                    help="path to the governed code repo (with --standalone)")
     sp.add_argument("--force", action="store_true")
     sp.set_defaults(func=cmd_init)
 
