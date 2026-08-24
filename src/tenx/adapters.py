@@ -84,6 +84,15 @@ ADAPTERS: list[HarnessAdapter] = [
                    bins=("prime-agent", "prime"),
                    instruction_files=("AGENTS.md",),
                    notes="injects AGENTS.md into the system prompt"),
+    HarnessAdapter(id="omp", name="Oh My Pie (omp)", bins=("omp",),
+                   instruction_files=("AGENTS.md",),
+                   notes="auto-discovers AGENTS.md into the system prompt; "
+                         "forced tier via --append-system-prompt "
+                         "'$(tenx hook bootstrap)'"),
+    HarnessAdapter(id="antigravity", name="Google Antigravity (agy)",
+                   bins=("agy", "antigravity"),
+                   instruction_files=("GEMINI.md", "AGENTS.md"),
+                   notes="Gemini-based CLI; reads GEMINI.md"),
 
     # --- ACP family (AGENTS.md fallback) ---
     HarnessAdapter(id="devin", name="Devin for Terminal", bins=("devin",),

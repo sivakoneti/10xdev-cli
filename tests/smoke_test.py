@@ -155,7 +155,8 @@ def main() -> int:
         ids = {r["id"] for r in rows}
         check("adapter catalog breadth",
               {"claude", "codex", "hermes", "prime-agent",
-               "deepseek-harness", "generic"} <= ids)
+               "deepseek-harness", "omp", "antigravity",
+               "generic"} <= ids)
         check("detect rows typed",
               all("detected" in r and "files" in r for r in rows))
         tenx("hook", "install", "--agent", "detected", cwd=proj)
@@ -166,6 +167,10 @@ def main() -> int:
               (proj / ".kiro/steering/tenx.md").is_file())
         tenx("hook", "install", "--agent", "qwen", cwd=proj)
         check("qwen instruction file", (proj / "QWEN.md").is_file())
+        tenx("hook", "install", "--agent", "omp", cwd=proj)
+        check("omp AGENTS.md", (proj / "AGENTS.md").is_file())
+        tenx("hook", "install", "--agent", "antigravity", cwd=proj)
+        check("antigravity GEMINI.md", (proj / "GEMINI.md").is_file())
         r = tenx("hook", "install", "--agent", "no-such-harness",
                  cwd=proj, expect_rc=2)
         check("unknown adapter rejected", r.returncode == 2)
