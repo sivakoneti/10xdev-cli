@@ -2,20 +2,20 @@
 id: SPC-006
 type: spec
 title: review queue + archive for finished work
-status: draft
+status: complete
 epic: EPC-003
 created: 2026-08-24
 updated: 2026-08-24
 tickets:
   - id: SPC-006-T1
     title: tenx review + --json
-    status: todo
+    status: done
   - id: SPC-006-T2
     title: tenx archive with open-ticket guard
-    status: todo
+    status: done
   - id: SPC-006-T3
     title: smoke checks for review/archive
-    status: todo
+    status: done
 ---
 
 ## Summary

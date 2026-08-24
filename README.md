@@ -162,6 +162,8 @@ tenx validate [--fix] [--json]   # lint the SDLC; --fix rebuilds the convention 
 tenx log "implemented webhook handler" --ref SPC-001 --type progress
 tenx history [--limit 20] [--json]
 tenx next [--json]               # prioritized work queue (the self-improving loop)
+tenx review [--json]             # what awaits review (in_review specs/tickets)
+tenx archive EPC-xxx [--yes]     # retire a finished epic and its specs
 tenx scan [--json] [--write]     # map the codebase; --write stores it as a DOC
 tenx sync push|pull [--spec SPC-xxx] [--dry-run] [--json]
 tenx mcp [serve|install]         # MCP server; install writes .mcp.json

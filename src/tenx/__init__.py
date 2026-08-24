@@ -6,4 +6,4 @@ validates the engineering process like a linter, and injects the right
 context into every agent session ("benevolent prompt injection").
 """
 
-__version__ = "0.9.0"
+__version__ = "0.10.0"

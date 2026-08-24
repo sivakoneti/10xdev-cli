@@ -11,7 +11,7 @@ updated: 2026-08-24
 
 ## Summary
 
-Auto-generated codebase map from `tenx scan` (24 files scanned).
+Auto-generated codebase map from `tenx scan` (26 files scanned).
 
 - project: tenx
 - code root: `/home/sivakoneti/ai-projects/10xdev`

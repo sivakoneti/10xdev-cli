@@ -381,6 +381,37 @@ def main() -> int:
         check("mcp install idempotent",
               json.loads(mcpjson.read_text()) == cfg)
 
+        # ---- tenx review + archive ----
+        tenx("new", "epic", "Review epic", cwd=scanproj)
+        tenx("new", "spec", "Review spec", "--epic", "EPC-001",
+             cwd=scanproj)
+        out = tenx("review", cwd=scanproj).stdout
+        check("review empty queue message", "nothing awaits review" in out)
+        tenx("ticket", "SPC-001", "SPC-001-T9", "in_review",
+             "--title", "needs eyes", cwd=scanproj)
+        out = tenx("review", cwd=scanproj).stdout
+        check("review lists in_review ticket",
+              "SPC-001-T9" in out and "needs eyes" in out)
+        out = tenx("review", "--json", cwd=scanproj).stdout
+        rj = json.loads(out)
+        check("review --json shape",
+              any(i["spec"] == "SPC-001" and
+                  any(t["id"] == "SPC-001-T9"
+                      for t in i["in_review_tickets"]) for i in rj))
+        tenx("ticket", "SPC-001", "SPC-001-T9", "done", cwd=scanproj)
+        # archive guard: open ticket blocks
+        tenx("ticket", "SPC-001", "SPC-001-T10", "todo",
+             "--title", "open", cwd=scanproj)
+        r = tenx("archive", "EPC-001", cwd=scanproj, expect_rc=2)
+        check("archive refuses open tickets", r.returncode == 2)
+        tenx("archive", "EPC-001", "--yes", cwd=scanproj)
+        out = tenx("list", "epic", "--json", cwd=scanproj).stdout
+        check("archive sets epic archived",
+              any(e["id"] == "EPC-001" and e["status"] == "archived"
+                  for e in json.loads(out)))
+        check("archive validate clean",
+              "clean" in tenx("validate", cwd=scanproj).stdout)
+
         # session logging throttle
         tenx("hook", "emit", "--no-log", cwd=scanproj)
         tenx("hook", "emit", cwd=scanproj)

@@ -410,6 +410,92 @@ def cmd_mcp(args: argparse.Namespace) -> int:
     return 0
 
 
+
+def _days_since(date_str: str) -> int | None:
+    from datetime import date
+    try:
+        y, m, d = (int(x) for x in str(date_str)[:10].split("-"))
+        return max(0, (date.today() - date(y, m, d)).days)
+    except (ValueError, TypeError):
+        return None
+
+
+def cmd_review(args: argparse.Namespace) -> int:
+    root = _root_or_die(args.root)
+    _require_init(root)
+    harness = load_harness(root)
+    items = []
+    for s in harness.by_type("spec"):
+        in_review_tickets = [t for t in s.tickets
+                             if str(t.get("status")) == "in_review"]
+        if s.status == "in_review" or in_review_tickets:
+            items.append({
+                "spec": s.id,
+                "title": s.title,
+                "spec_status": s.status,
+                "days_in_state": _days_since(s.meta.get("updated", "")),
+                "path": s.rel(root),
+                "in_review_tickets": [
+                    {"id": str(t.get("id", "")),
+                     "title": str(t.get("title", ""))}
+                    for t in in_review_tickets],
+            })
+    if args.json:
+        print(json.dumps(items, indent=2, ensure_ascii=False))
+        return 0
+    if not items:
+        print("nothing awaits review.")
+        return 0
+    print("# tenx review — awaiting review")
+    for it in items:
+        days = (f" ({it['days_in_state']}d in state)"
+                if it["days_in_state"] is not None else "")
+        print(f"- **{it['spec']}** {it['title']} "
+              f"[{it['spec_status']}]{days} — `{it['path']}`")
+        for t in it["in_review_tickets"]:
+            print(f"    - {t['id']}: {t['title']}")
+    print()
+    print("Review with `tenx show <SPEC-ID>`, then "
+          "`tenx ticket <SPEC> <TICKET> done` and "
+          "`tenx set <SPEC> status complete`.")
+    return 0
+
+
+def cmd_archive(args: argparse.Namespace) -> int:
+    root = _root_or_die(args.root)
+    _require_init(root)
+    harness = load_harness(root)
+    epic = harness.get(args.epic.upper())
+    if epic is None or epic.type != "epic":
+        print(f"tenx: unknown epic {args.epic}", file=sys.stderr)
+        return 2
+    specs = harness.specs_for_epic(epic.id)
+    open_statuses = ("todo", "in_progress", "in_review")
+    blockers = [(s.id, str(t.get("id", "")))
+                for s in specs for t in s.tickets
+                if str(t.get("status")) in open_statuses]
+    if blockers and not args.yes:
+        print(f"tenx: {epic.id} has {len(blockers)} open ticket(s):",
+              file=sys.stderr)
+        for sid, tid in blockers[:10]:
+            print(f"  {sid}: {tid}", file=sys.stderr)
+        print("finish them first, or pass --yes to archive anyway.",
+              file=sys.stderr)
+        return 2
+    from .activity import append_entry
+    from .artifacts import update_meta
+    update_meta(epic, {"status": "archived"})
+    for s in specs:
+        update_meta(s, {"status": "archived"})
+    append_entry(root,
+                 f"archived {epic.id} ({epic.title}) and "
+                 f"{len(specs)} spec(s)",
+                 entry_type="decision", ref=epic.id)
+    print(f"archived {epic.id} + {len(specs)} spec(s). "
+          f"They stay readable via `tenx show`.")
+    return 0
+
+
 def cmd_new(args: argparse.Namespace) -> int:
     root = _root_or_die(args.root)
     _require_init(root)
@@ -845,6 +931,18 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("mcp_cmd", nargs="?", choices=["serve", "install"],
                     default="serve")
     sp.set_defaults(func=cmd_mcp)
+
+    sp = sub.add_parser("review", help="what awaits review (specs and "
+                                       "tickets in_review)")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=cmd_review)
+
+    sp = sub.add_parser("archive", help="retire a finished epic and its "
+                                        "specs")
+    sp.add_argument("epic", help="epic id, e.g. EPC-001")
+    sp.add_argument("--yes", action="store_true",
+                    help="archive even if tickets are still open")
+    sp.set_defaults(func=cmd_archive)
 
     sp = sub.add_parser("new", help="create an artifact")
     sp.add_argument("type", choices=sorted(TYPE_PREFIX))

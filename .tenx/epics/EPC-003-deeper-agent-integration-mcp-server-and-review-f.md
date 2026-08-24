@@ -2,7 +2,7 @@
 id: EPC-003
 type: epic
 title: deeper agent integration — MCP server and review flow
-status: in_progress
+status: complete
 created: 2026-08-24
 updated: 2026-08-24
 ---

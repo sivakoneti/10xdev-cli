@@ -23,3 +23,6 @@
 {"ts": "2026-08-24T15:55:08+00:00", "type": "progress", "actor": "agent", "message": "mcp.py: JSON-RPC stdio core + 10-tool registry reusing cmd_* via stdout capture; round-trip verified (initialize/tools-list/tools-call/parse-error/-32601/ping, clean EOF exit)", "ref": "SPC-005"}
 {"ts": "2026-08-24T15:57:07+00:00", "type": "progress", "actor": "agent", "message": "mcp smoke: 9 checks incl. subprocess round-trip (initialize/tools/call/error paths/EOF) and .mcp.json install idempotency; all green", "ref": "SPC-005"}
 {"ts": "2026-08-24T15:59:22+00:00", "type": "progress", "actor": "agent", "message": "README: MCP section + tier-4 injection tier + command reference; version 0.9.0", "ref": "SPC-005"}
+{"ts": "2026-08-24T15:59:38+00:00", "type": "progress", "actor": "agent", "message": "github sync push to sivakoneti/10xdev-cli: 8 created, 0 updated"}
+{"ts": "2026-08-24T16:01:53+00:00", "type": "progress", "actor": "agent", "message": "tenx review (empty-queue msg, days-in-state, in_review tickets, --json) + tenx archive (open-ticket guard rc=2, --yes override, decision log) verified live", "ref": "SPC-006"}
+{"ts": "2026-08-24T16:08:35+00:00", "type": "progress", "actor": "agent", "message": "codebase map updated from tenx scan (26 files, stacks: python)", "ref": "DOC-002"}
