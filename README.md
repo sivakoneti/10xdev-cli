@@ -158,10 +158,25 @@ tenx validate [--fix] [--json]   # lint the SDLC; --fix rebuilds the convention 
 tenx log "implemented webhook handler" --ref SPC-001 --type progress
 tenx history [--limit 20] [--json]
 tenx next [--json]               # prioritized work queue (the self-improving loop)
+tenx scan [--json] [--write]     # map the codebase; --write stores it as a DOC
 tenx skills list|install [--target DIR]
 tenx hook [--mode agent]         # emit the packet (used by the SessionStart hook)
 tenx hook install --agent <id|all|detected>  # see `tenx hook detect`
 tenx doctor                      # health check
+```
+
+### Onboard an existing codebase in one command
+
+`tenx scan` walks the governed code repo and reports stacks, entry-point
+hints, test setup, CI, existing agent instruction files, and a top-level
+directory census. `tenx scan --write` upserts that map as a DOC artifact
+tagged `codebase-map`, so a fresh project goes from zero to briefed in
+one command and every later session starts with the map in the packet.
+
+```bash
+tenx init --bootstrap
+tenx scan            # read the map
+tenx scan --write    # store it as .tenx/docs/DOC-xxx-codebase-map.md
 ```
 
 ### Spec-first autonomous execution

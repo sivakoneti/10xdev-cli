@@ -241,6 +241,44 @@ def main() -> int:
         out = tenx("doctor", cwd=app).stdout
         check("doctor shows code_root", "code repo (code_root)" in out, out)
 
+        # ---- tenx scan ----
+        scanproj = tmp / "scan-proj"
+        (scanproj / "src").mkdir(parents=True)
+        (scanproj / "tests").mkdir()
+        (scanproj / "web").mkdir()
+        (scanproj / "pyproject.toml").write_text(
+            '[project]\nname = "scanpy"\n')
+        (scanproj / "web" / "package.json").write_text(
+            '{"name": "scanweb"}')
+        (scanproj / "src" / "main.py").write_text("print(1)")
+        (scanproj / "AGENTS.md").write_text("# agents")
+        (scanproj / ".github" / "workflows").mkdir(parents=True)
+        (scanproj / ".github" / "workflows" / "ci.yml").write_text("on: push")
+        tenx("init", cwd=scanproj)
+        out = tenx("scan", "--json", cwd=scanproj).stdout
+        scan = json.loads(out)
+        check("scan detects python stack", "python" in scan["stacks"])
+        check("scan detects node stack", "node" in scan["stacks"])
+        check("scan finds tests dir",
+              any("tests" in t for t in scan["test_setup"]))
+        check("scan finds CI", any("github" in c for c in scan["ci"]))
+        check("scan finds agent files",
+              any("AGENTS.md" in a for a in scan["agent_files"]))
+        check("scan finds entry hint",
+              any("main.py" in e for e in scan["entry_hints"]))
+        check("scan reads project name", scan["project"] == "scanpy")
+        out = tenx("scan", cwd=scanproj).stdout
+        check("scan human output", "stacks:" in out and "census" in out)
+        tenx("scan", "--write", cwd=scanproj)
+        docs = list((scanproj / ".tenx" / "docs").glob("*.md"))
+        check("scan --write creates DOC", len(docs) == 1)
+        check("scan DOC tagged codebase-map",
+              "codebase-map" in docs[0].read_text())
+        tenx("scan", "--write", cwd=scanproj)
+        docs2 = list((scanproj / ".tenx" / "docs").glob("*.md"))
+        check("scan --write upserts (no duplicate)", len(docs2) == 1)
+        check("scan validate clean",
+              "clean" in tenx("validate", cwd=scanproj).stdout)
 
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

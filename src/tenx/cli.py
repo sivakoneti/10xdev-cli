@@ -199,6 +199,45 @@ def cmd_status(args: argparse.Namespace) -> int:
     return cmd_context(args)
 
 
+def cmd_scan(args: argparse.Namespace) -> int:
+    from .discovery import code_root as resolve_code_root
+    from .scan import scan_tree
+
+    root = _root_or_die(args.root)
+    _require_init(root)
+    croot = resolve_code_root(root)
+    result = scan_tree(root, croot)
+    if getattr(args, "write", False):
+        from .scan import write_codebase_map
+        rel = write_codebase_map(root, croot, result)
+        print(f"codebase map written to .tenx/{rel}")
+        return 0
+    if args.json:
+        print(json.dumps(result, indent=2))
+        return 0
+    # human summary
+    print(f"# tenx scan — {result['project'] or 'unnamed project'}")
+    print(f"code root: {result['code_root']}")
+    print(f"files scanned: {result['file_count_scanned']}")
+    print()
+    print("stacks:      " + (", ".join(result["stacks"]) or "none detected"))
+    if result["markers"]:
+        print("markers:     " + ", ".join(result["markers"]))
+    if result["entry_hints"]:
+        print("entry hints: " + ", ".join(result["entry_hints"]))
+    print("tests:       " + (", ".join(result["test_setup"]) or "none found"))
+    print("CI:          " + (", ".join(result["ci"]) or "none found"))
+    print("agent files: " + (", ".join(result["agent_files"]) or "none"))
+    if result["top_level_census"]:
+        print()
+        print("top-level census (files per entry, depth<=2):")
+        for name, n in result["top_level_census"].items():
+            print(f"  {name:<28} {n}")
+    print()
+    print("Run `tenx scan --write` to store this map as a DOC artifact.")
+    return 0
+
+
 def cmd_new(args: argparse.Namespace) -> int:
     root = _root_or_die(args.root)
     _require_init(root)
@@ -605,6 +644,13 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("status", help="operator dashboard")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_status)
+
+    sp = sub.add_parser("scan", help="map the codebase (stack, tests, CI, "
+                                      "agent files, directory census)")
+    sp.add_argument("--json", action="store_true")
+    sp.add_argument("--write", action="store_true",
+                    help="upsert the map as a DOC artifact in .tenx/docs/")
+    sp.set_defaults(func=cmd_scan)
 
     sp = sub.add_parser("new", help="create an artifact")
     sp.add_argument("type", choices=sorted(TYPE_PREFIX))

@@ -1,1 +1,13 @@
 {"ts": "2026-08-24T09:43:53+00:00", "type": "progress", "actor": "agent", "message": "v0.1.0 built: init/context/new/show/list/set/ticket/validate/log/history/next/skills/hook/doctor; 21-check smoke test green"}
+{"ts": "2026-08-24T14:30:55+00:00", "type": "progress", "actor": "agent", "message": "v0.2.0: standalone PM repo support (--standalone --code-root, .tenxlink pointer, hooks land in code repo)", "ref": "EPC-001"}
+{"ts": "2026-08-24T14:30:55+00:00", "type": "progress", "actor": "agent", "message": "v0.3.0: spec-first autonomous execution (tenx exec brief, ticket create-on-first-touch)", "ref": "EPC-001"}
+{"ts": "2026-08-24T14:30:55+00:00", "type": "progress", "actor": "agent", "message": "v0.5.0: OpenDesign-style adapter registry — 27 declarative harness adapters, tenx hook detect, --agent detected", "ref": "EPC-001"}
+{"ts": "2026-08-24T14:30:55+00:00", "type": "progress", "actor": "agent", "message": "v0.5.1: omp (Oh My Pie) + antigravity (agy) adapters; 8/29 harnesses detected on this machine", "ref": "EPC-001"}
+{"ts": "2026-08-24T14:30:55+00:00", "type": "progress", "actor": "agent", "message": "v0.5.2: audit fixes (severity-override list form, README accuracy); repo moved to ai-projects/10xdev; pushed to github.com/sivakoneti/10xdev-cli", "ref": "EPC-001"}
+{"ts": "2026-08-24T14:30:55+00:00", "type": "decision", "actor": "agent", "message": "decision: dogfood tenx on tenx itself for all further development — every feature goes through epic -> spec -> tickets -> exec loop"}
+{"ts": "2026-08-24T14:36:59+00:00", "type": "progress", "actor": "agent", "message": "scan.py walker + stack/marker detection implemented; verified on tenx repo (python stack, tests/, 3 agent files)", "ref": "SPC-002"}
+{"ts": "2026-08-24T14:38:44+00:00", "type": "progress", "actor": "agent", "message": "tenx scan CLI + --json wired; human summary verified on tenx repo", "ref": "SPC-002"}
+{"ts": "2026-08-24T14:48:23+00:00", "type": "progress", "actor": "agent", "message": "codebase map created from tenx scan (24 files, stacks: python)", "ref": "DOC-002"}
+{"ts": "2026-08-24T14:48:24+00:00", "type": "progress", "actor": "agent", "message": "codebase map updated from tenx scan (24 files, stacks: python)", "ref": "DOC-002"}
+{"ts": "2026-08-24T14:49:25+00:00", "type": "progress", "actor": "agent", "message": "tenx scan --write upserts DOC tagged codebase-map + logs activity; fixed invalid 'current' status -> complete", "ref": "SPC-002"}
+{"ts": "2026-08-24T14:51:27+00:00", "type": "progress", "actor": "agent", "message": "smoke suite extended with 12 scan checks (mixed python+node scratch repo, --json shape, --write upsert); walker fixed to see empty dirs and .github", "ref": "SPC-002"}
