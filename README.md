@@ -83,6 +83,10 @@ Injection tiers:
    instructions. That block is the entire integration; it only assumes
    the agent can run shell commands. Even with nothing installed, an
    agent can always run `tenx context --mode agent` on demand.
+4. **Native MCP tools** — harnesses with Model Context Protocol support
+   (Claude Code, Cursor, Cline, Windsurf, Copilot, ...) can call tenx
+   as structured tools instead of shell commands. See
+   [MCP server](#native-tools-via-mcp) below.
 
 ### Alternative: standalone PM repo (the 10X layout)
 
@@ -160,6 +164,7 @@ tenx history [--limit 20] [--json]
 tenx next [--json]               # prioritized work queue (the self-improving loop)
 tenx scan [--json] [--write]     # map the codebase; --write stores it as a DOC
 tenx sync push|pull [--spec SPC-xxx] [--dry-run] [--json]
+tenx mcp [serve|install]         # MCP server; install writes .mcp.json
 tenx skills list|install [--target DIR]
 tenx hook [--mode agent] [--budget N] [--no-log]  # emit the packet; logs a throttled session entry
 tenx hook install --agent <id|all|detected>  # see `tenx hook detect`
@@ -197,6 +202,26 @@ agents actually booted with context. Use `--no-log` to opt out.
 tenx context --mode agent --budget 1500
 tenx hook emit --budget 1500
 ```
+
+### Native tools via MCP
+
+`tenx mcp` runs a Model Context Protocol server on stdio (newline-
+delimited JSON-RPC 2.0, zero dependencies). MCP-capable harnesses get
+the whole tenx surface as native tools — no prompt parsing, structured
+arguments, typed errors.
+
+```bash
+tenx mcp install               # writes managed .mcp.json (Claude Code)
+# or register manually in any MCP-capable harness:
+#   command: tenx   args: ["mcp"]
+```
+
+Exposed tools: `tenx_context`, `tenx_next`, `tenx_status`, `tenx_show`,
+`tenx_list`, `tenx_ticket`, `tenx_log`, `tenx_validate`, `tenx_scan`,
+`tenx_exec`. Each maps onto the same code path as the CLI command, so
+output and exit semantics match exactly. The server is fault-isolated:
+a bad tool call or malformed line returns an error result and keeps
+serving.
 
 ### Multiplayer: sync tickets to GitHub Issues
 

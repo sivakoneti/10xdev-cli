@@ -370,6 +370,46 @@ def cmd_sync(args: argparse.Namespace) -> int:
     return 0
 
 
+
+def cmd_mcp(args: argparse.Namespace) -> int:
+    if getattr(args, "mcp_cmd", "serve") == "install":
+        root = _root_or_die(args.root)
+        _require_init(root)
+        import json as _json
+        target = code_root(root) / ".mcp.json"
+        config = {"mcpServers": {"tenx": {
+            "command": "tenx",
+            "args": ["mcp"],
+        }}}
+        if target.exists():
+            try:
+                existing = _json.loads(target.read_text(encoding="utf-8"))
+            except Exception:
+                existing = {}
+            servers = existing.setdefault("mcpServers", {})
+            if servers.get("tenx") == config["mcpServers"]["tenx"]:
+                print(f"  unchanged: {target}")
+                return 0
+            servers["tenx"] = config["mcpServers"]["tenx"]
+            config = existing
+            verb = "updated"
+        else:
+            verb = "created"
+        target.write_text(_json.dumps(config, indent=2) + "\n",
+                          encoding="utf-8")
+        print(f"  {verb}: {target}")
+        print("MCP-capable harnesses (Claude Code et al.) will now see "
+              "tenx tools in this project.")
+        return 0
+    # serve
+    from .mcp import McpServer
+    if args.root:
+        import os
+        os.environ["TENX_ROOT"] = str(Path(args.root).resolve())
+    McpServer().serve()
+    return 0
+
+
 def cmd_new(args: argparse.Namespace) -> int:
     root = _root_or_die(args.root)
     _require_init(root)
@@ -799,6 +839,12 @@ def build_parser() -> argparse.ArgumentParser:
                     help="print the plan, touch nothing")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_sync)
+
+    sp = sub.add_parser("mcp", help="MCP server: expose tenx as native "
+                                    "tools for MCP-capable harnesses")
+    sp.add_argument("mcp_cmd", nargs="?", choices=["serve", "install"],
+                    default="serve")
+    sp.set_defaults(func=cmd_mcp)
 
     sp = sub.add_parser("new", help="create an artifact")
     sp.add_argument("type", choices=sorted(TYPE_PREFIX))

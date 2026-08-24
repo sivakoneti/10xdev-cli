@@ -325,6 +325,62 @@ def main() -> int:
               [n for n, _ in kept][0] == "a" and "c" in omitted)
         check("apply_budget pure (no mutation)",
               len(omitted) + len(kept) == 3)
+        # ---- tenx mcp (stdio JSON-RPC round trip) ----
+        mcp_msgs = [
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+             "params": {"protocolVersion": "2025-03-26",
+                        "capabilities": {},
+                        "clientInfo": {"name": "smoke", "version": "0"}}},
+            {"jsonrpc": "2.0", "method": "notifications/initialized"},
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+            {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+             "params": {"name": "tenx_validate", "arguments": {}}},
+            {"jsonrpc": "2.0", "id": 4, "method": "tools/call",
+             "params": {"name": "no_such_tool", "arguments": {}}},
+            "this line is not json",
+            {"jsonrpc": "2.0", "id": 5, "method": "bogus/method"},
+        ]
+        inp = "\n".join(json.dumps(m) if isinstance(m, dict) else m
+                         for m in mcp_msgs) + "\n"
+        r = subprocess.run([sys.executable, "-m", "tenx", "mcp"],
+                           input=inp, capture_output=True, text=True,
+                           timeout=120, cwd=scanproj,
+                           env={**os.environ,
+                                "PYTHONPATH": str(Path(__file__).parent.parent / "src")})
+        check("mcp exits cleanly on EOF", r.returncode == 0, r.stderr[:200])
+        resp = {}
+        parse_errors = 0
+        for ln in r.stdout.splitlines():
+            d = json.loads(ln)
+            if d.get("id") is not None:
+                resp[d["id"]] = d
+            elif "error" in d:
+                parse_errors += 1
+        check("mcp initialize negotiates",
+              resp[1]["result"]["serverInfo"]["name"] == "tenx")
+        tool_names = {t["name"] for t in resp[2]["result"]["tools"]}
+        check("mcp lists 10 tools", len(tool_names) == 10,
+              str(tool_names))
+        check("mcp exposes tenx_context", "tenx_context" in tool_names)
+        check("mcp tools/call works",
+              resp[3]["result"]["isError"] is False
+              and "tenx validate" in resp[3]["result"]["content"][0]["text"])
+        check("mcp unknown tool -> isError",
+              resp[4]["result"]["isError"] is True)
+        check("mcp parse error reported", parse_errors == 1)
+        check("mcp unknown method -> -32601",
+              resp[5]["error"]["code"] == -32601)
+        # mcp install writes managed .mcp.json
+        tenx("mcp", "install", cwd=scanproj)
+        mcpjson = scanproj / ".mcp.json"
+        check("mcp install creates .mcp.json", mcpjson.is_file())
+        cfg = json.loads(mcpjson.read_text())
+        check("mcp.json has tenx server",
+              cfg["mcpServers"]["tenx"]["command"] == "tenx")
+        tenx("mcp", "install", cwd=scanproj)  # idempotent
+        check("mcp install idempotent",
+              json.loads(mcpjson.read_text()) == cfg)
+
         # session logging throttle
         tenx("hook", "emit", "--no-log", cwd=scanproj)
         tenx("hook", "emit", cwd=scanproj)
