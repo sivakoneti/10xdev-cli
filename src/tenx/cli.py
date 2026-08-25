@@ -19,6 +19,7 @@ Command map (mirrors the 10X harness from the David Ondrej podcast):
   tenx hook [--mode agent]         emit the session-start packet
   tenx hook install [--agent X]    wire packet into claude/codex/opencode/gemini
   tenx doctor                      environment + harness health check
+  tenx update [--check]            check for (and apply) CLI updates
 """
 
 from __future__ import annotations
@@ -51,6 +52,7 @@ from .nextup import compute_next, render_next
 from .rules import RULE_CATALOG, list_rules_text, rebuild_convention_index, validate
 from .skills import install_skills, list_skills
 from .templates import BODY_TEMPLATES, CODE_ROOT_COMMENT, CONFIG_TEMPLATE, HARNESS_README
+from .update import run_update
 from .yamlite import dump_frontmatter
 
 
@@ -885,6 +887,15 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_update(args: argparse.Namespace) -> int:
+    """Check for (and apply) tenx CLI updates.
+
+    Default: check + upgrade if newer. --check: report only, never
+    upgrade — this is the session-start form agents should run.
+    """
+    return run_update(__version__, check_only=args.check, as_json=args.json)
+
+
 # ------------------------------------------------------------------ parser
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1040,6 +1051,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("doctor", help="environment + harness health")
     sp.set_defaults(func=cmd_doctor)
+
+    sp = sub.add_parser("update",
+                        help="check for and apply CLI updates "
+                             "(agents: run `tenx update --check` at "
+                             "session start)")
+    sp.add_argument("--check", action="store_true",
+                    help="only report whether a newer version exists; "
+                         "never upgrade (safe at session start)")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=cmd_update)
 
     return p
 

@@ -510,6 +510,46 @@ def main() -> int:
         check("archive validate clean",
               "clean" in tenx("validate", cwd=scanproj).stdout)
 
+        # ---- SPC-009 self-update + session-start awareness ----
+        from tenx.update import parse_version as pv
+        check("parse_version basic", pv("v0.11.0") == (0, 11, 0))
+        check("parse_version numeric compare",
+              pv("0.9.0") < pv("0.11.0") < pv("1.0.0"))
+        check("parse_version prerelease truncates",
+              pv("1.2.3rc1") == (1, 2))
+        check("parse_version garbage -> (0,)", pv("garbage") == (0,))
+        # check is offline-tolerant: always rc 0, never a traceback
+        r = tenx("update", "--check", cwd=scanproj)
+        check("update --check exits 0", r.returncode == 0)
+        check("update --check no traceback",
+              "Traceback" not in r.stderr)
+        uj = json.loads(tenx("update", "--check", "--json",
+                             cwd=scanproj).stdout)
+        check("update --json typed",
+              all(k in uj for k in
+                  ("current", "latest", "update_available", "status")))
+        check("update --json status valid",
+              uj["status"] in
+              ("up-to-date", "update-available", "check-failed"))
+        # session-start surfaces tell agents to check for updates
+        tenx("hook", "install", "--agent", "all", cwd=scanproj)
+        tenx("skills", "install", cwd=scanproj)
+        out = tenx("context", "--mode", "agent", cwd=scanproj).stdout
+        check("packet workspace mentions self-update",
+              "self-updating" in out and "tenx update --check" in out)
+        check("protocol step 1 is the update check",
+              "1. The tenx CLI self-updates" in out)
+        agents_md = (scanproj / "AGENTS.md").read_text()
+        check("AGENTS.md block mentions updates",
+              "tenx update --check" in agents_md)
+        out = tenx("hook", "bootstrap", cwd=scanproj).stdout
+        check("bootstrap snippet mentions updates",
+              "tenx update --check" in out)
+        skill = (scanproj / ".claude/skills/tenx-process/SKILL.md"
+                 ).read_text()
+        check("process skill step 1 is the update check",
+              "tenx update --check" in skill)
+
         # session logging throttle
         tenx("hook", "emit", "--no-log", cwd=scanproj)
         tenx("hook", "emit", cwd=scanproj)

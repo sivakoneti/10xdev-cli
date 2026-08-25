@@ -31,6 +31,29 @@ uv tool install /path/to/10xdev        # or: pipx install /path/to/10xdev
 tenx --version
 ```
 
+## Updating
+
+tenx is installed per machine as a standalone CLI, so existing installs do
+not pick up new features on their own. It ships with a self-update command:
+
+```bash
+tenx update --check        # report whether a newer version exists (no change)
+tenx update                # check, then upgrade in place via uv/pipx
+tenx update --check --json # machine-readable
+```
+
+The check reads the upstream repo (GitHub Releases, falling back to
+`pyproject.toml` on the default branch) and is offline-tolerant: a failed
+check prints a note and exits 0, it never crashes. The upgrade detects the
+installer (`uv tool` vs `pipx`) and runs the matching upgrade command; if it
+cannot detect one it prints manual instructions.
+
+Because tenx is agent-facing, the session-start surfaces already tell agents
+to check: the operating protocol in `tenx context --mode agent`, the
+`AGENTS.md` managed block, the bootstrap snippet, and the `tenx-process`
+skill all instruct agents to run `tenx update --check` at session start and
+to tell a human before installing a newer version.
+
 ## Quick start (any project)
 
 ```bash
@@ -172,6 +195,7 @@ tenx skills list|install [--target DIR]
 tenx hook [--mode agent] [--budget N] [--no-log]  # emit the packet; logs a throttled session entry
 tenx hook install --agent <id|all|detected>  # see `tenx hook detect`
 tenx doctor                      # health check
+tenx update [--check] [--json]   # self-update; --check reports only
 ```
 
 ### Onboard an existing codebase in one command

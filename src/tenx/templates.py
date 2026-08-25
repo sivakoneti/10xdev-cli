@@ -146,18 +146,21 @@ description: The tenx working loop for any task in this project. Use at session 
 
 You are a senior engineer on this project. Follow this loop exactly:
 
-1. **Brief yourself.** Run `tenx context --mode agent` and read the packet.
-2. **Pick the work.** Run `tenx next`. It reports the highest-value action
+1. **Check the tooling.** Run `tenx update --check`. If a newer tenx
+   version exists, tell the human and suggest `tenx update`. Never block
+   on this — if it cannot check (offline), move on.
+2. **Brief yourself.** Run `tenx context --mode agent` and read the packet.
+3. **Pick the work.** Run `tenx next`. It reports the highest-value action
    (fix validation errors > review in_review specs > advance active tickets
    > spec out draft epics > reconcile drift).
-3. **Load full context.** For the artifact you will touch, run
+4. **Load full context.** For the artifact you will touch, run
    `tenx show <ID>` and read the file. Read `.tenx/conventions/INDEX.md`
    and every convention it lists before writing code.
-4. **Do the work.** Small, verifiable steps. Follow all conventions.
-5. **Write back.** After each significant step run
+5. **Do the work.** Small, verifiable steps. Follow all conventions.
+6. **Write back.** After each significant step run
    `tenx log "what changed" --ref <ID>` and update ticket statuses
    (`tenx ticket <SPEC-ID> <TICKET-ID> <status>`).
-6. **Validate.** Before ending, run `tenx validate`. Fix any drift you
+7. **Validate.** Before ending, run `tenx validate`. Fix any drift you
    introduced. Never leave new errors behind.
 
 Rules:

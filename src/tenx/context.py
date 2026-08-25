@@ -20,16 +20,19 @@ from .rules import RuleSet, validate
 
 PROTOCOL = """## Operating protocol (always follow)
 
-1. Before planning or coding, load the artifacts relevant to your task
+1. The tenx CLI self-updates. At session start run `tenx update --check`;
+   if it reports a newer version, tell the human and suggest
+   `tenx update` to install it. Never block on this — offline is fine.
+2. Before planning or coding, load the artifacts relevant to your task
    (`tenx show <ID>`), and read `.tenx/conventions/INDEX.md` plus every
    convention it lists. Conventions bind you.
-2. If unsure what to do next, run `tenx next` and do the top item.
-3. Keep ticket statuses in sync as you work:
+3. If unsure what to do next, run `tenx next` and do the top item.
+4. Keep ticket statuses in sync as you work:
    `tenx ticket <SPEC-ID> <TICKET-ID> <status>`.
-4. After significant work, write back: `tenx log "what changed" --ref <ID>`.
-5. Before ending a session run `tenx validate` and fix any drift you
+5. After significant work, write back: `tenx log "what changed" --ref <ID>`.
+6. Before ending a session run `tenx validate` and fix any drift you
    introduced. Never leave new errors behind.
-6. Process facts live in `.tenx/` artifacts. Do not invent them; if a
+7. Process facts live in `.tenx/` artifacts. Do not invent them; if a
    convention conflicts with a spec, stop and ask the human."""
 
 
@@ -196,7 +199,9 @@ def render_markdown(project_root: Path, mode: str = "agent",
         f"- Project root: `{data['project_root']}`\n"
         f"{code_line}"
         f"- Harness (context base): `{data['harness_root']}/`\n"
-        f"- CLI: tenx v{data['cli_version']} — use it; it is agent-facing.\n"
+        f"- CLI: tenx v{data['cli_version']} — agent-facing and "
+        f"self-updating; run `tenx update --check` to see if a newer "
+        f"version exists.\n"
         f"- Artifacts: {data['counts']['epics']} epics, "
         f"{data['counts']['specs']} specs, {data['counts']['conventions']} conventions, "
         f"{data['counts']['docs']} docs")

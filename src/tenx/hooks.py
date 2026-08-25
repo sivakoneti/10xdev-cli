@@ -42,6 +42,10 @@ writing code:
 
 Useful: `tenx next` (what to work on), `tenx show <ID>` (full artifact),
 `tenx log "msg" --ref <ID>` (write back), `tenx validate` (self drift).
+
+Updates: the tenx CLI self-updates. Run `tenx update --check` at session
+start; if a newer version exists, tell the human and suggest
+`tenx update` to install it.
 {MANAGED_END}"""
 
 
@@ -135,7 +139,11 @@ activity, and the operating protocol. Follow that protocol.
 Write-back contract: after significant work, record it —
 `tenx log "<what changed>" --ref <ID>`, move tickets with
 `tenx ticket <SPEC> <TICKET> <status>`, and run `tenx validate` before
-finishing. The harness is the source of truth; keep it honest."""
+finishing. The harness is the source of truth; keep it honest.
+
+Updates: the tenx CLI self-updates. At session start run
+`tenx update --check`; if it reports a newer version, tell the human
+and suggest `tenx update` to install it."""
 
 
 def bootstrap_snippet() -> str:
