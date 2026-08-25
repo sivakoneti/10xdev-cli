@@ -784,6 +784,111 @@ def main() -> int:
               "Landing discipline" in wproc2
               and "Evidence before done" in wproc2)
 
+        # ---- SPC-017 concurrency-safe state ----
+        from tenx.locking import atomic_write_text
+        concproj = Path(tempfile.mkdtemp(prefix="tenx-conc-"))
+        tenx("init", cwd=concproj)
+
+        def _tenx_cmd():
+            c = [sys.executable, "-m", "tenx"] if USE_MODULE else ["tenx"]
+            e = dict(os.environ)
+            if USE_MODULE:
+                src = str(Path(__file__).resolve().parent.parent / "src")
+                e["PYTHONPATH"] = src + os.pathsep + e.get("PYTHONPATH", "")
+            return c, e
+        cmd0, env0 = _tenx_cmd()
+
+        # atomic write leaves intact content and no temp file
+        aw = concproj / "atomic-test.txt"
+        atomic_write_text(aw, "hello atomic\n")
+        check("atomic_write_text writes intact",
+              aw.read_text() == "hello atomic\n")
+        check("atomic_write_text leaves no tmp",
+              not aw.with_name("atomic-test.txt.tmp").exists())
+
+        # concurrent log appends lose no entries and keep the log valid
+        N = 12
+        procs = [subprocess.Popen(
+                     [*cmd0, "log", f"conc-msg-{i}", "--type", "note"],
+                     cwd=concproj, env=env0, stdout=subprocess.PIPE,
+                     stderr=subprocess.PIPE, text=True)
+                 for i in range(N)]
+        rcs = [p.wait(timeout=90) for p in procs]
+        check("concurrent log appends all succeed",
+              all(rc == 0 for rc in rcs), str(rcs))
+        loglines = (concproj / ".tenx/log/activity.jsonl"
+                    ).read_text().splitlines()
+        msgs = [l for l in loglines if "conc-msg-" in l]
+        check("concurrent log appends lose no entries",
+              len(msgs) == N, f"{len(msgs)}/{N}")
+        ok = True
+        for l in loglines:
+            l = l.strip()
+            if not l:
+                continue
+            try:
+                json.loads(l)
+            except Exception:
+                ok = False
+                break
+        check("concurrent appends keep log valid JSON", ok)
+
+        # concurrent set on one artifact leaves it parseable (no corruption)
+        tenx("new", "epic", "Conc epic", cwd=concproj)
+        tenx("new", "spec", "Conc spec", "--epic", "EPC-001", cwd=concproj)
+        cspec_file = sorted((concproj / ".tenx/specs").glob(
+            "SPC-*-conc-spec.md"))[-1]
+        cspec = cspec_file.read_text().split("id: ")[1].split("\n")[0]
+        procs = [subprocess.Popen(
+                     [*cmd0, "set", cspec, "owner", f"agent-{i}"],
+                     cwd=concproj, env=env0, stdout=subprocess.PIPE,
+                     stderr=subprocess.PIPE, text=True)
+                 for i in range(8)]
+        rcs = [p.wait(timeout=90) for p in procs]
+        check("concurrent set all succeed",
+              all(rc == 0 for rc in rcs), str(rcs))
+        meta = json.loads(tenx("show", cspec, "--json",
+                               cwd=concproj).stdout)["meta"]
+        check("concurrent set leaves artifact parseable",
+              meta.get("id") == cspec, str(meta.get("id")))
+        check("concurrent set keeps exactly one owner field",
+              cspec_file.read_text().count("owner:") == 1)
+
+        # a held lock makes a mutating command fail fast, clean, no traceback.
+        # Hold the lock in a thread of THIS process (flock is per-process, so the
+        # tenx subprocess still contends); far more robust than a bg holder proc.
+        import threading
+        from tenx.locking import harness_lock as _hl
+        held_ev = threading.Event()
+        release_ev = threading.Event()
+
+        def _hold_lock():
+            with _hl(concproj, timeout=5):
+                held_ev.set()
+                release_ev.wait(timeout=10)
+
+        holder_thread = threading.Thread(target=_hold_lock, daemon=True)
+        holder_thread.start()
+        check("lock holder acquired", held_ev.wait(timeout=5),
+              "thread did not acquire the lock in time")
+        env_short = dict(env0)
+        env_short["TENX_LOCK_TIMEOUT"] = "1"
+        env_short["TENX_ROOT"] = str(concproj)  # pin root; discovery can't wander
+        r = subprocess.run(
+            [*cmd0, "--root", str(concproj), "log", "should-block",
+             "--type", "note"],
+            cwd=concproj, env=env_short, capture_output=True, text=True)
+        combined = r.stdout + r.stderr
+        check("locked command exits 2", r.returncode == 2,
+              f"rc={r.returncode} stderr={r.stderr[:200]}")
+        check("locked command has no traceback",
+              "Traceback" not in combined, combined[:300])
+        check("locked command prints clean message",
+              "could not acquire" in combined, combined[:300])
+        release_ev.set()
+        holder_thread.join(timeout=10)
+        shutil.rmtree(concproj, ignore_errors=True)
+
         # ---- sync fails clean on network error (no traceback) ----
         syncproj = Path(tempfile.mkdtemp(prefix="tenx-syncfail-"))
         subprocess.run(["git", "init", "-q", "."], cwd=syncproj)

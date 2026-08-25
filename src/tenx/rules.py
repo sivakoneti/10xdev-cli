@@ -28,6 +28,7 @@ from .artifacts import (
     load_harness,
 )
 from .discovery import harness_root
+from .locking import atomic_write_text
 from .templates import INDEX_HEADER
 from .yamlite import yamlite_load
 
@@ -475,7 +476,7 @@ def rebuild_convention_index(project_root: Path, harness: Harness) -> Path:
     for c in harness.by_type("convention"):
         status = c.status or "draft"
         lines.append(f"- **{c.id}** — {c.title} `[{status}]` → `{c.path.name}`\n")
-    idx_path.write_text("".join(lines), encoding="utf-8")
+    atomic_write_text(idx_path, "".join(lines))
     return idx_path
 
 

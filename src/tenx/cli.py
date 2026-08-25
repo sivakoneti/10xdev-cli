@@ -55,6 +55,7 @@ from .hooks import bootstrap_snippet, install as install_hook
 from .nextup import compute_next, render_next
 from .watchdog import compute_watchdog, render_watchdog
 from .triage import compute_triage, render_triage
+from .locking import LockTimeout, harness_lock
 from .rules import RULE_CATALOG, list_rules_text, rebuild_convention_index, validate
 from .skills import install_skills, list_skills
 from .templates import BODY_TEMPLATES, CODE_ROOT_COMMENT, CONFIG_TEMPLATE, HARNESS_README
@@ -1155,13 +1156,44 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+# Commands that write `.tenx` state. They are serialized behind a per-project
+# advisory lock so a fleet of concurrent agents cannot lose or corrupt writes.
+MUTATING_COMMANDS = {"init", "new", "set", "ticket", "log", "archive",
+                     "hook", "skills", "sync", "validate"}
+
+
+def _lock_root(args: argparse.Namespace) -> Path | None:
+    """Best-effort project root for locking; None if not resolvable."""
+    try:
+        explicit = getattr(args, "root", None)
+        if explicit:
+            return Path(explicit).resolve()
+        return env_project_root() or find_project_root()
+    except Exception:
+        return None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if not getattr(args, "func", None):
         parser.print_help()
         return 0
+    cmd = getattr(args, "command", None)
+    lock_root = None
+    if cmd in MUTATING_COMMANDS:
+        lock_root = _lock_root(args)
+        # First `tenx init` has no harness yet; nothing to guard.
+        if lock_root is not None and not is_initialized(lock_root):
+            lock_root = None
     try:
+        if lock_root is not None:
+            try:
+                with harness_lock(lock_root):
+                    return args.func(args)
+            except LockTimeout as e:
+                print(f"tenx: {e}", file=sys.stderr)
+                return 2
         return args.func(args)
     except KeyboardInterrupt:
         return 130

@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .templates import SKILLS
+from .locking import atomic_write_text
 
 
 def list_skills() -> list[str]:
@@ -18,6 +19,6 @@ def install_skills(target_dir: Path) -> list[Path]:
         d = target_dir / name
         d.mkdir(parents=True, exist_ok=True)
         p = d / "SKILL.md"
-        p.write_text(body.lstrip(), encoding="utf-8")
+        atomic_write_text(p, body.lstrip())
         written.append(p)
     return written

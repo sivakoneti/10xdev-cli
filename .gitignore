@@ -4,3 +4,6 @@ dist/
 build/
 *.egg-info/
 .venv/
+
+# tenx runtime lockfile (advisory, never commit)
+.tenx/.lock

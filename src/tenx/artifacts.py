@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from .discovery import harness_root
+from .locking import atomic_write_text
 from .yamlite import dump_frontmatter, load_frontmatter, split_frontmatter
 
 TYPE_PREFIX = {
@@ -214,14 +215,14 @@ def create_artifact(
     if path.exists():
         raise FileExistsError(str(path))
     art = Artifact(path=path, meta=meta, body=body)
-    path.write_text(art.render(), encoding="utf-8")
+    atomic_write_text(path, art.render())
     return art
 
 
 def update_meta(artifact: Artifact, updates: dict[str, Any]) -> None:
     artifact.meta.update(updates)
     artifact.meta["updated"] = today()
-    artifact.path.write_text(artifact.render(), encoding="utf-8")
+    atomic_write_text(artifact.path, artifact.render())
 
 
 def derived_status(artifact: Artifact) -> str | None:

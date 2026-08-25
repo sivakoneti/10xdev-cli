@@ -24,6 +24,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from .locking import atomic_write_text
+
 MANAGED_BEGIN = "<!-- tenx:begin (managed block — do not edit by hand) -->"
 MANAGED_END = "<!-- tenx:end -->"
 
@@ -58,7 +60,7 @@ def _merge_json_file(path: Path, updater) -> tuple[bool, str]:
             return False, f"{path} contains invalid JSON; fix it first"
     changed = updater(data)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    atomic_write_text(path, json.dumps(data, indent=2) + "\n")
     return changed, str(path)
 
 
@@ -93,7 +95,7 @@ def install_md_block(project_root: Path, filename: str = "AGENTS.md") -> tuple[b
         sep = "\n\n" if text.strip() else ""
         new_text = text.rstrip() + sep + AGENT_MD_BLOCK + "\n"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(new_text, encoding="utf-8")
+    atomic_write_text(path, new_text)
     return True, str(path)
 
 
@@ -115,7 +117,7 @@ def install_managed_file(project_root: Path, relpath: str,
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.is_file() and path.read_text(encoding="utf-8") == text:
         return False, str(path)
-    path.write_text(text, encoding="utf-8")
+    atomic_write_text(path, text)
     return True, str(path)
 
 
