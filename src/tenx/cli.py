@@ -15,6 +15,7 @@ Command map (mirrors the 10X harness from the David Ondrej podcast):
   tenx log "message" --ref <ID>    append to the activity log
   tenx history                     show recent activity
   tenx next                        most important thing to work on next
+  tenx watchdog                    top things needing attention + are they handled
   tenx skills list|install         bundled skills per artifact type
   tenx hook [--mode agent]         emit the session-start packet
   tenx hook install [--agent X]    wire packet into claude/codex/opencode/gemini
@@ -34,11 +35,13 @@ from typing import Any
 from . import __version__
 from .activity import TYPES as LOG_TYPES, append_entry, read_entries
 from .artifacts import (
+    PRIORITIES,
     STATUSES,
     TICKET_STATUSES,
     TYPE_PREFIX,
     create_artifact,
     derived_status,
+    effective_priority,
     load_harness,
     update_meta,
 )
@@ -49,6 +52,7 @@ from .discovery import (TENXLINK, code_root, env_project_root,
 from .adapters import adapter_ids, detect_adapters, get_adapter
 from .hooks import bootstrap_snippet, install as install_hook
 from .nextup import compute_next, render_next
+from .watchdog import compute_watchdog, render_watchdog
 from .rules import RULE_CATALOG, list_rules_text, rebuild_convention_index, validate
 from .skills import install_skills, list_skills
 from .templates import BODY_TEMPLATES, CODE_ROOT_COMMENT, CONFIG_TEMPLATE, HARNESS_README
@@ -525,6 +529,13 @@ def cmd_new(args: argparse.Namespace) -> int:
         extra["owner"] = args.owner
     if args.tags:
         extra["tags"] = [t.strip() for t in args.tags.split(",") if t.strip()]
+    if getattr(args, "priority", None):
+        prio = str(args.priority).upper()
+        if prio not in PRIORITIES:
+            print(f"tenx: priority must be one of {PRIORITIES}",
+                  file=sys.stderr)
+            return 2
+        extra["priority"] = prio
     body = BODY_TEMPLATES.get(atype, "")
     try:
         art = create_artifact(root, atype, args.title, extra_meta=extra,
@@ -578,7 +589,8 @@ def cmd_list(args: argparse.Namespace) -> int:
         for a in harness.by_type(t):
             items.append({
                 "id": a.id, "type": a.type, "title": a.title,
-                "status": a.status, "path": a.rel(root),
+                "status": a.status, "priority": a.priority,
+                "path": a.rel(root),
             })
     if args.json:
         print(json.dumps(items, indent=2, ensure_ascii=False))
@@ -589,12 +601,14 @@ def cmd_list(args: argparse.Namespace) -> int:
     width = max(len(i["id"]) for i in items)
     for i in items:
         status = f"[{i['status']}]" if i["status"] else ""
-        print(f"{i['id']:<{width}}  {status:<13} {i['title']}  ({i['path']})")
+        prio = f" {i['priority']}" if i.get("priority") else ""
+        print(f"{i['id']:<{width}}  {status:<13}{prio:<4} "
+              f"{i['title']}  ({i['path']})")
     return 0
 
 
 SETTABLE_FIELDS = {"status": STATUSES, "owner": None, "epic": None,
-                   "title": None, "tags": None}
+                   "title": None, "tags": None, "priority": PRIORITIES}
 
 
 def cmd_set(args: argparse.Namespace) -> int:
@@ -612,6 +626,8 @@ def cmd_set(args: argparse.Namespace) -> int:
         return 2
     allowed = SETTABLE_FIELDS[field]
     value: Any = args.value
+    if field == "priority":
+        value = str(value).upper()
     if allowed and value not in allowed:
         print(f"tenx: {field} must be one of {allowed}", file=sys.stderr)
         return 2
@@ -746,6 +762,19 @@ def cmd_next(args: argparse.Namespace) -> int:
         print(json.dumps(compute_next(root), indent=2, ensure_ascii=False))
     else:
         sys.stdout.write(render_next(root))
+    return 0
+
+
+def cmd_watchdog(args: argparse.Namespace) -> int:
+    root = _root_or_die(args.root)
+    _require_init(root)
+    window = float(getattr(args, "window", 7) or 7)
+    top = int(getattr(args, "top", 5) or 5)
+    if args.json:
+        print(json.dumps(compute_watchdog(root, window_days=window, top=top),
+                         indent=2, ensure_ascii=False))
+    else:
+        sys.stdout.write(render_watchdog(root, window_days=window, top=top))
     return 0
 
 
@@ -978,6 +1007,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--epic", help="parent epic id (required for specs)")
     sp.add_argument("--owner")
     sp.add_argument("--tags", help="comma-separated")
+    sp.add_argument("--priority", help="business priority tier: P0/P1/P2")
     sp.set_defaults(func=cmd_new)
 
     sp = sub.add_parser("show", help="print one artifact")
@@ -1026,6 +1056,15 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("next", help="most important thing to work on next")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_next)
+
+    sp = sub.add_parser("watchdog",
+                        help="top things needing attention + are they handled")
+    sp.add_argument("--json", action="store_true")
+    sp.add_argument("--window", type=float, default=7,
+                    help="days that count as 'recent' activity (default 7)")
+    sp.add_argument("--top", type=int, default=5,
+                    help="max items to show (default 5)")
+    sp.set_defaults(func=cmd_watchdog)
 
     sp = sub.add_parser("exec",
                         help="print an autonomous execution brief for a spec")

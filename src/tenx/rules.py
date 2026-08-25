@@ -17,6 +17,7 @@ from .artifacts import (
     ID_FIND_RE,
     ID_RE,
     REQUIRED_FIELDS,
+    PRIORITIES,
     STATUSES,
     TICKET_STATUSES,
     TYPE_DIRS,
@@ -63,6 +64,9 @@ RULE_CATALOG: dict[str, tuple[str, str]] = {
     "dates-monotonic": ("warning",
                         "artifact `updated` date is before its `created` "
                         "date"),
+    "priority-format": ("warning",
+                        "priority is set but not one of P0/P1/P2 (unset is "
+                        "fine; it means normal queue order)"),
     # -- structure refs ---------------------------------------------------
     "epic-ref": ("error",
                  "spec has no epic reference or references an unknown epic"),
@@ -317,6 +321,11 @@ def _rule_statuses(harness: Harness, rs: RuleSet) -> None:
         elif required and not a.status:
             rs.add("status-valid", "error",
                    f"{a.id}: missing status", artifact_id=a.id)
+        prio = str(a.meta.get("priority", "") or "").strip()
+        if prio and prio.upper() not in PRIORITIES:
+            rs.add("priority-format", "warning",
+                   f"{a.id}: priority '{prio}' not in {list(PRIORITIES)}",
+                   artifact_id=a.id)
 
 
 def _rule_epic_refs(harness: Harness, rs: RuleSet) -> None:

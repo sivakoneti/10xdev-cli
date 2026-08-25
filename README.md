@@ -197,16 +197,18 @@ tenx init [--bootstrap]          # scaffold .tenx/ in this project
 tenx context --mode operator     # human dashboard
 tenx context --mode agent [--budget N]  # full packet; --budget truncates low-priority sections
 tenx status                      # alias for the operator dashboard
-tenx new <epic|spec|convention|doc> "Title" [--epic EPC-001]
+tenx new <epic|spec|convention|doc> "Title" [--epic EPC-001] [--priority P0]
 tenx show <ID> [--json]          # full artifact, metadata + body
 tenx list [type] [--json]
-tenx set <ID> status in_review   # update metadata (status/owner/epic/title/tags)
+tenx set <ID> status in_review   # update metadata (status/owner/epic/title/tags/priority)
+tenx set <ID> priority P0        # business priority tier: P0/P1/P2
 tenx ticket SPC-001 SPC-001-T2 done
 tenx validate [--fix] [--json]   # lint the SDLC; --fix rebuilds the convention index
 tenx validate --list-rules [--json]  # print the rule catalog (no linting)
 tenx log "implemented webhook handler" --ref SPC-001 --type progress
 tenx history [--limit 20] [--json]
 tenx next [--json]               # prioritized work queue (the self-improving loop)
+tenx watchdog [--json] [--window 7] [--top 5]  # top things needing attention + are they handled
 tenx review [--json]             # what awaits review (in_review specs/tickets)
 tenx archive EPC-xxx [--yes]     # retire a finished epic and its specs
 tenx scan [--json] [--write]     # map the codebase; --write stores it as a DOC
@@ -326,9 +328,23 @@ order: `TENX_ROOT` env > `.tenx/` walking up > `.tenxlink` walking up >
 5. write specs for draft epics
 6. (nothing queued → create an epic)
 
+Within the "do the work" buckets (3–5), a **business priority tier**
+(`P0`/`P1`/`P2`, set with `tenx set <ID> priority P0`) floats urgent work
+above normal work. Harness health (1–2) always comes first regardless of
+priority — fix the machine, then build. A spec inherits its epic's priority
+when it has none of its own.
+
+`tenx watchdog` is the pulse check: it scans the whole harness and surfaces
+the top few problems — broken validation, drift, blocked or stalled specs,
+open blockers, work waiting in review — and cross-references recent activity
+to say whether each is **being handled** or **unattended**. Run it after
+`tenx context` to spot work that has gone quiet.
+
 Install the bundled `tenx-process` skill (`tenx skills install`) and agents
 run this loop autonomously: brief → pick → load context → work → write back →
-validate.
+validate. The bundled `tenx-review` skill adds the **landing discipline**:
+evidence before done, a bounded 2-cycle fix loop, and a human gate on the
+final merge.
 
 ## Validation rules
 

@@ -36,6 +36,10 @@ TYPE_DIRS = {
 
 STATUSES = ["draft", "in_progress", "in_review", "complete", "blocked", "archived"]
 TICKET_STATUSES = ["todo", "in_progress", "in_review", "done"]
+# Business priority tiers (optional). P0 = must move forward no matter
+# what; unset = normal queue order. Mirrors priority-bucket systems
+# used to manage fleets of agents.
+PRIORITIES = ["P0", "P1", "P2"]
 
 REQUIRED_FIELDS: dict[str, list[str]] = {
     "epic": ["id", "type", "title", "status", "created", "updated"],
@@ -84,6 +88,11 @@ class Artifact:
     @property
     def status(self) -> str:
         return str(self.meta.get("status", ""))
+
+    @property
+    def priority(self) -> str:
+        """Business priority tier (P0/P1/P2) or "" when unset."""
+        return str(self.meta.get("priority", "") or "").strip().upper()
 
     @property
     def tickets(self) -> list[dict[str, Any]]:
@@ -234,3 +243,21 @@ def derived_status(artifact: Artifact) -> str | None:
     if any(s in ("in_progress", "done") for s in statuses):
         return "in_progress"
     return "draft"
+
+def effective_priority(artifact: Artifact, harness: "Harness") -> str:
+    """Business priority for an artifact, inheriting from its epic.
+
+    A spec inherits its epic's priority when it has none of its own.
+    Returns "" when nothing in the chain sets a priority.
+    """
+    own = artifact.priority
+    if own:
+        return own
+    if artifact.type == "spec":
+        epic_id = str(artifact.meta.get("epic", "") or "").upper()
+        if epic_id:
+            epic = harness.get(epic_id)
+            if epic is not None and epic.priority:
+                return epic.priority
+    return ""
+

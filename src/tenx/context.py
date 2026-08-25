@@ -15,7 +15,7 @@ from typing import Any
 from . import __version__
 from .activity import read_entries
 from .discovery import code_root
-from .artifacts import Harness, derived_status, load_harness
+from .artifacts import Harness, derived_status, effective_priority, load_harness
 from .rules import RuleSet, validate
 
 PROTOCOL = """## Operating protocol (always follow)
@@ -26,7 +26,9 @@ PROTOCOL = """## Operating protocol (always follow)
 2. Before planning or coding, load the artifacts relevant to your task
    (`tenx show <ID>`), and read `.tenx/conventions/INDEX.md` plus every
    convention it lists. Conventions bind you.
-3. If unsure what to do next, run `tenx next` and do the top item.
+3. If unsure what to do next, run `tenx next` and do the top item. To
+   spot blocked or stalled work, run `tenx watchdog` — it ranks what needs
+   attention and says whether each item is being handled.
 4. Keep ticket statuses in sync as you work:
    `tenx ticket <SPEC-ID> <TICKET-ID> <status>`.
 5. After significant work, write back: `tenx log "what changed" --ref <ID>`.
@@ -80,6 +82,7 @@ def build_context(project_root: Path, mode: str = "agent",
         "epics": [
             {
                 "id": e.id, "title": e.title, "status": e.status,
+                "priority": e.priority,
                 "path": e.rel(project_root),
                 "specs": [s.id for s in harness.specs_for_epic(e.id)],
             } for e in epics
@@ -87,6 +90,7 @@ def build_context(project_root: Path, mode: str = "agent",
         "specs": [
             {
                 "id": s.id, "title": s.title, "status": s.status,
+                "priority": effective_priority(s, harness),
                 "epic": s.meta.get("epic"),
                 "derived_status": derived_status(s),
                 "tickets_total": len(s.tickets),

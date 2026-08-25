@@ -359,9 +359,10 @@ def main() -> int:
         check("mcp initialize negotiates",
               resp[1]["result"]["serverInfo"]["name"] == "tenx")
         tool_names = {t["name"] for t in resp[2]["result"]["tools"]}
-        check("mcp lists 10 tools", len(tool_names) == 10,
+        check("mcp lists 11 tools", len(tool_names) == 11,
               str(tool_names))
         check("mcp exposes tenx_context", "tenx_context" in tool_names)
+        check("mcp exposes tenx_watchdog", "tenx_watchdog" in tool_names)
         check("mcp tools/call works",
               resp[3]["result"]["isError"] is False
               and "tenx validate" in resp[3]["result"]["content"][0]["text"])
@@ -477,7 +478,7 @@ def main() -> int:
                    for f in d.get(k, [])}
         check("catalog covers emitted rules", emitted <= cat_ids,
               str(emitted - cat_ids))
-        check("catalog has 29 rules", len(cat) == 29, str(len(cat)))
+        check("catalog has 30 rules", len(cat) == 30, str(len(cat)))
 
         # ---- tenx review + archive ----
         tenx("new", "epic", "Review epic", cwd=scanproj)
@@ -588,6 +589,113 @@ def main() -> int:
                 ).read_text()
         check("review skill references review + archive commands",
               "tenx review" in wrev and "tenx archive" in wrev)
+
+        # ---- EPC-007 operational control loop: priority tiers ----
+        tenx("new", "epic", "Ops epic", cwd=scanproj)
+        ops_epic = sorted((scanproj / ".tenx/epics").glob(
+            "EPC-*-ops-epic.md"))[-1]
+        ops_id = ops_epic.read_text().split("id: ")[1].split("\n")[0]
+        tenx("new", "spec", "Ops P0 spec", "--epic", ops_id, cwd=scanproj)
+        tenx("new", "spec", "Ops P1 spec", "--epic", ops_id, cwd=scanproj)
+        p0 = sorted((scanproj / ".tenx/specs").glob(
+            "SPC-*-ops-p0-spec.md"))[-1]
+        p1 = sorted((scanproj / ".tenx/specs").glob(
+            "SPC-*-ops-p1-spec.md"))[-1]
+        p0_id = p0.read_text().split("id: ")[1].split("\n")[0]
+        p1_id = p1.read_text().split("id: ")[1].split("\n")[0]
+        # set + normalize + reject
+        tenx("set", p1_id, "priority", "P1", cwd=scanproj)
+        tenx("set", p0_id, "priority", "p0", cwd=scanproj)  # lowercase ok
+        tenx("set", p0_id, "priority", "P9", cwd=scanproj, expect_rc=2)
+        check("priority lowercase normalized to P0",
+              "priority: P0" in p0.read_text())
+        check("invalid priority rejected",
+              "priority: P9" not in p0.read_text())
+        # new --priority
+        tenx("new", "epic", "Prio epic", "--priority", "P0", cwd=scanproj)
+        prio_epic = sorted((scanproj / ".tenx/epics").glob(
+            "EPC-*-prio-epic.md"))[-1].read_text()
+        check("tenx new --priority sets tier", "priority: P0" in prio_epic)
+        # list shows priority
+        out = tenx("list", "spec", "--json", cwd=scanproj).stdout
+        check("list exposes priority field",
+              any(i["id"] == p0_id and i.get("priority") == "P0"
+                  for i in json.loads(out)))
+        # next orders P0 before P1 within the work bucket
+        out = tenx("next", "--json", cwd=scanproj).stdout
+        acts = json.loads(out)
+        biz = [a.get("biz") for a in acts if a.get("biz")]
+        check("next sorts P0 ahead of P1",
+              biz and biz.index("P0") < biz.index("P1"), str(biz))
+        # context packet carries priority
+        out = tenx("context", "--mode", "agent", cwd=scanproj).stdout
+        ctxj = json.loads(tenx("context", "--mode", "agent", "--json",
+                               cwd=scanproj).stdout)
+        check("context spec carries effective priority",
+              any(sp["id"] == p0_id and sp.get("priority") == "P0"
+                  for sp in ctxj["specs"]))
+        # spec inherits epic priority when it has none
+        tenx("set", ops_id, "priority", "P2", cwd=scanproj)
+        ctxj = json.loads(tenx("context", "--mode", "agent", "--json",
+                               cwd=scanproj).stdout)
+        check("spec inherits epic priority",
+              any(sp["id"] == p1_id and sp.get("priority") in ("P1", "P2")
+                  for sp in ctxj["specs"]))
+        # priority-format rule fires on a bad hand-edit
+        bad_prio = sorted((scanproj / ".tenx/specs").glob(
+            "SPC-*-ops-p1-spec.md"))[-1]
+        txt = bad_prio.read_text().replace("priority: P1", "priority: URGENT")
+        bad_prio.write_text(txt)
+        out = tenx("validate", "--json", cwd=scanproj, expect_rc=0).stdout
+        warns = json.loads(out)["warnings"]
+        check("priority-format rule flags bad tier",
+              any(w["rule"] == "priority-format" for w in warns), str(warns))
+        bad_prio.write_text(txt.replace("priority: URGENT", "priority: P1"))
+
+        # ---- EPC-007 watchdog digest ----
+        r = tenx("watchdog", cwd=scanproj)
+        check("watchdog runs clean", r.returncode == 0)
+        check("watchdog no traceback", "Traceback" not in r.stderr)
+        wj = json.loads(tenx("watchdog", "--json", cwd=scanproj).stdout)
+        check("watchdog --json shape",
+              all(k in wj for k in ("items", "counts", "window_days")))
+        # blocked spec surfaces as high
+        tenx("set", p0_id, "status", "blocked", cwd=scanproj)
+        wj = json.loads(tenx("watchdog", "--json", cwd=scanproj).stdout)
+        check("watchdog flags blocked spec",
+              any(it.get("ref") == p0_id and it["severity"] == "high"
+                  for it in wj["items"]), str(wj["items"]))
+        out = tenx("watchdog", cwd=scanproj).stdout
+        check("watchdog renders handling verdict",
+              "being worked on" in out or "unattended" in out
+              or "stalled" in out or "gone quiet" in out)
+        tenx("set", p0_id, "status", "draft", cwd=scanproj)
+        # in_review surfaces as medium
+        tenx("set", p1_id, "status", "in_review", cwd=scanproj)
+        wj = json.loads(tenx("watchdog", "--json", cwd=scanproj).stdout)
+        check("watchdog flags in_review spec",
+              any(it.get("ref") == p1_id and it["severity"] == "medium"
+                  for it in wj["items"]), str(wj["items"]))
+        tenx("set", p1_id, "status", "draft", cwd=scanproj)
+        # MCP exposes the watchdog tool
+        from tenx.mcp import _tooldefs
+        names = {t["name"] for t in _tooldefs()}
+        check("mcp registers tenx_watchdog", "tenx_watchdog" in names)
+
+        # ---- EPC-007 landing discipline in skills ----
+        wrev2 = (scanproj / ".claude/skills/tenx-review/SKILL.md"
+                 ).read_text()
+        check("review skill teaches bounded fix loop",
+              "Bounded fix loop" in wrev2 and "2" in wrev2)
+        check("review skill teaches evidence gate",
+              "Evidence gate" in wrev2)
+        check("review skill keeps a human landing gate",
+              "Human gate" in wrev2 or "human" in wrev2.lower())
+        wproc2 = (scanproj / ".claude/skills/tenx-process/SKILL.md"
+                  ).read_text()
+        check("process skill teaches landing discipline",
+              "Landing discipline" in wproc2
+              and "Evidence before done" in wproc2)
 
         # ---- sync fails clean on network error (no traceback) ----
         syncproj = Path(tempfile.mkdtemp(prefix="tenx-syncfail-"))

@@ -15,10 +15,20 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from .artifacts import Harness, load_harness
+from .artifacts import Harness, effective_priority, load_harness
 from .rules import RuleSet, validate
 
 TICKET_ORDER = {"in_progress": 0, "todo": 1, "in_review": 2, "done": 3}
+
+# Business priority tiers refine ordering WITHIN the "do the work" buckets
+# (review / implement / write-specs). Harness health (errors, drift) always
+# comes first regardless of priority — fix the machine, then build.
+PRIORITY_RANK = {"P0": 0, "P1": 1, "P2": 2}
+UNSET_RANK = 3
+
+
+def _rank(prio: str) -> int:
+    return PRIORITY_RANK.get(prio, UNSET_RANK)
 
 
 def compute_next(project_root: Path, harness: Harness | None = None,
@@ -28,9 +38,11 @@ def compute_next(project_root: Path, harness: Harness | None = None,
     actions: list[dict[str, Any]] = []
 
     def add(priority: int, action: str, ref: str | None = None,
-            path: str | None = None, detail: str = "") -> None:
+            path: str | None = None, detail: str = "",
+            biz: str = "") -> None:
         actions.append({"priority": priority, "action": action, "ref": ref,
-                       "path": path, "detail": detail})
+                       "path": path, "detail": detail, "biz": biz,
+                       "biz_rank": _rank(biz)})
 
     for f in ruleset.errors():
         add(1, "fix validation error", f.artifact_id, f.path, f.message)
@@ -40,7 +52,8 @@ def compute_next(project_root: Path, harness: Harness | None = None,
     for s in harness.by_type("spec"):
         if s.status == "in_review":
             add(3, "review spec and land or bounce it", s.id,
-                s.rel(project_root), f"{s.title}")
+                s.rel(project_root), f"{s.title}",
+                biz=effective_priority(s, harness))
 
     for e in harness.by_type("epic"):
         if e.status not in ("draft", "in_review", "in_progress"):
@@ -49,26 +62,29 @@ def compute_next(project_root: Path, harness: Harness | None = None,
         active = [s for s in specs if s.status in ("draft", "in_progress", "in_review")]
         if not specs:
             add(5, f"write specs for epic {e.id}", e.id, e.rel(project_root),
-                e.title)
+                e.title, biz=e.priority)
             continue
         for s in active:
+            biz = effective_priority(s, harness)
             open_tickets = [t for t in s.tickets
                            if str(t.get("status")) in ("todo", "in_progress")]
             open_tickets.sort(key=lambda t: TICKET_ORDER.get(
                 str(t.get("status")), 9))
             if not open_tickets and s.status == "draft":
                 add(4, f"break spec {s.id} into tickets", s.id,
-                    s.rel(project_root), s.title)
+                    s.rel(project_root), s.title, biz=biz)
                 continue
             for t in open_tickets:
                 add(4, f"implement ticket {t.get('id')} of {s.id}", s.id,
                     s.rel(project_root),
-                    f"[{t.get('status')}] {t.get('title', '')}")
+                    f"[{t.get('status')}] {t.get('title', '')}", biz=biz)
 
     if not actions:
         add(6, "no queued work — create an epic", None, None,
             'tenx new epic "What we are building next"')
-    actions.sort(key=lambda a: a["priority"])
+    # Primary: action type (fix harness first). Secondary: business
+    # priority so P0 work floats above P1/P2/unset within the same bucket.
+    actions.sort(key=lambda a: (a["priority"], a["biz_rank"]))
     return actions
 
 
@@ -79,8 +95,9 @@ def render_next(project_root: Path) -> str:
     for i, a in enumerate(actions[:15], 1):
         marker = "→ " if a["priority"] == top_prio else "  "
         ref = f" [{a['ref']}]" if a.get("ref") else ""
+        biz = f" {a['biz']}" if a.get("biz") else ""
         detail = f" — {a['detail']}" if a.get("detail") else ""
-        lines.append(f"{marker}{i}. {a['action']}{ref}{detail}")
+        lines.append(f"{marker}{i}.{biz} {a['action']}{ref}{detail}")
         if a.get("path"):
             lines.append(f"      file: {a['path']}")
     if len(actions) > 15:

@@ -71,6 +71,20 @@ def _tooldefs() -> list[dict[str, Any]]:
                         "ticket to implement next.",
          "inputSchema": {"type": "object", "properties": {}},
          "handler": mk(C.cmd_next, {"json": False})},
+        {"name": "tenx_watchdog",
+         "description": "Pulse-check digest: the top things needing "
+                        "attention, each cross-referenced with recent "
+                        "activity to say whether it is being handled. "
+                        "Run after tenx_context to spot stalled or "
+                        "blocked work.",
+         "inputSchema": {"type": "object", "properties": {
+             "window": {"type": "number",
+                        "description": "days that count as recent "
+                                       "activity (default 7)"},
+             "top": {"type": "integer",
+                     "description": "max items to show (default 5)"}}},
+         "handler": mk(C.cmd_watchdog, {"json": False, "window": 7,
+                                        "top": 5})},
         {"name": "tenx_status",
          "description": "Operator dashboard: artifact counts, statuses, "
                         "recent activity.",
