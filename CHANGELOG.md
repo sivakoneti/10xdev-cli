@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - DSH agent preset: rename to 'tenx — Meta-Harness Engineering Agent' and rewrite the description to lead with tenx's real purpose (context-as-code meta-harness) instead of describing it as a coding agent.
 
+### Fixed
+- Fixed DSH preset mount failure in DSH web: added missing delegation rows (workflow-worker-thread, tool-subagent-list-agents, tool-subagent-fork, tool-ralph) to DSH_PRESET_CORDIS template (SPC-019)
+
 ## [v0.17.0] - 2026-08-25
 
 ### Added
