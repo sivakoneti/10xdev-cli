@@ -54,6 +54,23 @@ to check: the operating protocol in `tenx context --mode agent`, the
 skill all instruct agents to run `tenx update --check` at session start and
 to tell a human before installing a newer version.
 
+## Concurrency-safe state (v0.15+)
+
+A fleet of agents can run `tenx` against the same project at the same time.
+Mutating commands (`init`, `new`, `set`, `ticket`, `log`, `archive`,
+`hook`, `skills`, `sync`, `validate`) are serialized behind a per-project
+advisory lock at `.tenx/.lock` (via `fcntl.flock`; the OS releases it on
+crash or exit). State-file writes use atomic replacement (`temp +
+os.replace`), so readers never see partial files.
+
+If another process holds the lock, a mutating command waits up to 60 s
+(override with `TENX_LOCK_TIMEOUT=seconds`), then exits `2` with a clean
+message — no traceback. Read-only commands (`context`, `show`, `list`,
+`next`, `watchdog`, `triage`, `review`, `history`, `doctor`,
+`update --check`) do not take the lock.
+
+`.tenx/.lock` is gitignored; never commit it.
+
 ## Quick start (any project)
 
 ```bash
@@ -372,80 +389,36 @@ the CLI at any time — no project needed.
 
 | Rule | Default | What it catches |
 |------|---------|-----------------|
-| `harness-missing` | error | no .tenx/ harness found; run `tenx init` first |
-| `frontmatter-parse` | error | artifact frontmatter is not parseable YAML |
-| `frontmatter-required` | error | artifact is missing a required frontmatter field (id/type/title/status per type) |
-| `type-unknown` | error | artifact type is not one of epic/spec/convention/doc |
-
-**Ids & files**
-
-| Rule | Default | What it catches |
-|------|---------|-----------------|
-| `id-format` | error | artifact id must look like EPC-001 / SPC-001 / CON-001 / DOC-001 |
-| `id-type-mismatch` | error | artifact id prefix does not match its type |
-| `id-unique` | error | two artifacts share the same id |
-| `id-filename-mismatch` | warning | artifact filename does not start with its id (manual rename broke navigation) |
-
-**Status & dates**
-
-| Rule | Default | What it catches |
-|------|---------|-----------------|
-| `status-valid` | error | artifact status missing or not in the allowed vocabulary |
-| `dates-monotonic` | warning | artifact `updated` date is before its `created` date |
-
-**Structure refs**
-
-| Rule | Default | What it catches |
-|------|---------|-----------------|
-| `epic-ref` | error | spec has no epic reference or references an unknown epic |
-| `convention-index` | warning | conventions/INDEX.md drifts from the convention files (run `tenx validate --fix`) |
-| `convention-empty-body` | warning | convention body has too little content to be followed (param: min_convention_chars) |
+| `archived-epic-active-specs` | warning | epic is archived but one or more of its specs are not |
+| `blocker-unresolved` | info | recent blocker log entry has no follow-up progress/decision entry (param: blocker_days) |
 | `config-code-root` | error | config declares a code_root that does not exist |
-
-**Tickets**
-
-| Rule | Default | What it catches |
-|------|---------|-----------------|
-| `ticket-id` | error | spec ticket without an id |
-| `ticket-id-unique` | error | duplicate ticket id within one spec |
-| `ticket-status-valid` | error | ticket status not in todo/in_progress/in_review/done/blocked |
-| `ticket-id-prefix` | warning | ticket id should be '<SPEC-ID>-T<n>' — GitHub sync markers depend on it |
-| `ticket-title-missing` | info | ticket has no title |
-
-**Spec & epic discipline**
-
-| Rule | Default | What it catches |
-|------|---------|-----------------|
-| `orphan-spec` | warning | spec is in_progress/in_review/complete but defines no tickets |
-| `spec-missing-sections` | warning | spec body lacks required sections (param: spec_sections, default Summary,Validation) |
+| `convention-empty-body` | warning | convention body has too little content to be followed (param: min_convention_chars) |
+| `convention-index` | warning | conventions/INDEX.md drifts from the convention files (run `tenx validate --fix`) |
+| `dates-monotonic` | warning | artifact `updated` date is before its `created` date |
 | `derived-status-drift` | warning | authored spec status disagrees with the status derived from its tickets (the 10X checkpoint rule; also surfaces as info when all tickets are done but the spec is not promoted) |
 | `epic-no-specs` | info | active epic has no specs yet |
 | `epic-progress-drift` | warning | epic status disagrees with its specs' statuses (also surfaces as info when all specs are done but the epic is not promoted) |
-| `archived-epic-active-specs` | warning | epic is archived but one or more of its specs are not |
-
-**Time & activity**
-
-| Rule | Default | What it catches |
-|------|---------|-----------------|
-| `stale-artifact` | info | artifact sat in_review longer than stale_days (param: stale_days) |
-| `log-quiet` | info | no activity logged for quiet_days (param: quiet_days) |
+| `epic-ref` | error | spec has no epic reference or references an unknown epic |
+| `frontmatter-parse` | error | artifact frontmatter is not parseable YAML |
+| `frontmatter-required` | error | artifact is missing a required frontmatter field (id/type/title/status per type) |
+| `harness-missing` | error | no .tenx/ harness found; run `tenx init` first |
+| `id-filename-mismatch` | warning | artifact filename does not start with its id (manual rename broke navigation) |
+| `id-format` | error | artifact id must look like EPC-001 / SPC-001 / CON-001 / DOC-001 |
+| `id-type-mismatch` | error | artifact id prefix does not match its type |
+| `id-unique` | error | two artifacts share the same id |
 | `log-progress-no-ref` | info | progress log entry has no artifact ref — write-back should reference an artifact |
-| `blocker-unresolved` | info | recent blocker log entry has no follow-up progress/decision entry (param: blocker_days) |
-
-The signature rule is **derived-status-drift**: a spec claiming `complete`
-while its tickets are still open — the same checkpoint 10X uses to keep
-authored state honest.
-
-Override in `.tenx/rules.yaml`:
-
-```yaml
-disable:
-  - log-quiet
-severity:
-  - stale-artifact: warning
-params:
-  stale_days: 21
-```
+| `log-quiet` | info | no activity logged for quiet_days (param: quiet_days) |
+| `orphan-spec` | warning | spec is in_progress/in_review/complete but defines no tickets |
+| `priority-format` | warning | priority is set but not one of P0/P1/P2 (unset is fine; it means normal queue order) |
+| `spec-missing-sections` | warning | spec body lacks required sections (param: spec_sections, default Summary,Validation) |
+| `stale-artifact` | info | artifact sat in_review longer than stale_days (param: stale_days) |
+| `status-valid` | error | artifact status missing or not in the allowed vocabulary |
+| `ticket-id` | error | spec ticket without an id |
+| `ticket-id-prefix` | warning | ticket id should be '<SPEC-ID>-T<n>' — GitHub sync markers depend on it |
+| `ticket-id-unique` | error | duplicate ticket id within one spec |
+| `ticket-status-valid` | error | ticket status not in todo/in_progress/in_review/done/blocked |
+| `ticket-title-missing` | info | ticket has no title |
+| `type-unknown` | error | artifact type is not one of epic/spec/convention/doc |
 
 ## Layout created by `tenx init`
 

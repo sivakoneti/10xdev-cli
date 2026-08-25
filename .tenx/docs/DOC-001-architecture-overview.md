@@ -26,7 +26,7 @@ touching `src/tenx/`.
                      importable)
       templates.py   artifact body templates, config/harness-README templates,
                      bundled skill texts
-      rules.py       validation engine: RULE_CATALOG (29 rules) + _rule_*
+      rules.py       validation engine: RULE_CATALOG (30 rules) + _rule_*
                      functions + convention index rebuild; `tenx validate
                      --list-rules` prints the catalog
       context.py     context packet builder (operator/agent modes, md/json,
@@ -49,6 +49,8 @@ touching `src/tenx/`.
                      `tenx mcp install` writes managed .mcp.json
       update.py      `tenx update [--check]`: self-update (GitHub Releases API
                      -> branch pyproject.toml fallback; offline-tolerant;
+      locking.py     per-project advisory lock (.tenx/.lock) + atomic_write_text;
+                     serializes mutating commands so concurrent agents are safe
                      uv/pipx upgrade detection)
 
 ## Key invariants
@@ -70,7 +72,7 @@ touching `src/tenx/`.
 ## How to run/test
 
     uv tool install --force .              # installs tenx + 10x executables
-    python3 tests/smoke_test.py            # ~105-check end-to-end smoke suite
+    python3 tests/smoke_test.py            # ~177-check end-to-end smoke suite
     python3 tests/smoke_test.py --module   # same, against src/ without install
     tenx validate                          # lint the harness itself
 
