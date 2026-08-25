@@ -209,13 +209,16 @@ def install_git_hook(project_root: Path) -> tuple[bool, str]:
 
 # ── SPC-019: DSH agent preset (persona-mandated tenx loop) ─────────────────
 
-DSH_PRESET_META = """name: tenx - Process-Compliant Coding Agent
+DSH_PRESET_META = """name: tenx — Meta-Harness Engineering Agent
 description: >-
-  A coding agent that follows the tenx meta-harness process by construction.
-  Its persona mandates the tenx loop: read the context packet at session
-  start, track work in epics/specs/tickets, write back with tenx log, and
-  never call work done until `tenx validate` passes with evidence. Pairs with
-  the tenx git pre-commit gate for a non-bypassable backstop.
+  tenx's own engineering agent — context-as-code for AI coding agents.
+  tenx turns any project into a context base of structured markdown
+  (epics, specs, conventions, docs) that keeps agents briefed, on-rails,
+  and accountable across sessions. This agent embodies that process by
+  construction: it boots on the session-start context packet, tracks work
+  in epics/specs/tickets, writes back with `tenx log`, and never calls
+  work done until `tenx validate` passes with evidence — backed by the
+  tenx git pre-commit gate as a non-bypassable backstop.
 order: 1
 """
 

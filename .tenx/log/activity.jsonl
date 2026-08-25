@@ -55,3 +55,4 @@
 {"ts": "2026-08-25T09:54:13+00:00", "type": "progress", "actor": "agent", "message": "git pre-commit hook installed by init and hook install; smoke confirms clean commit passes and non-compliant commit blocked", "ref": "SPC-020"}
 {"ts": "2026-08-25T09:54:13+00:00", "type": "progress", "actor": "agent", "message": "AGENT_MD_BLOCK and BOOTSTRAP_SNIPPET hardened with HARD RULES; README documents forced tiers; smoke asserts mandate language", "ref": "SPC-021"}
 {"ts": "2026-08-25T09:59:05+00:00", "type": "progress", "actor": "agent", "message": "github sync push to sivakoneti/10xdev-cli: 11 created, 0 updated"}
+{"ts": "2026-08-25T10:51:53+00:00", "type": "progress", "actor": "agent", "message": "DSH preset metadata fix: corrected preset.yml title/description in the hooks.py generator so the mounted DSH preset matches tenx's actual purpose; regenerated on-disk preset and verified via DSH's own discovery+health scan (tenx reports HEALTHY)."}

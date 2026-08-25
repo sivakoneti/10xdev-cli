@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- DSH agent preset: rename to 'tenx — Meta-Harness Engineering Agent' and rewrite the description to lead with tenx's real purpose (context-as-code meta-harness) instead of describing it as a coding agent.
+
 ## [v0.17.0] - 2026-08-25
 
 ### Added
