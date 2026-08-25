@@ -291,7 +291,10 @@ tenx sync pull             # map issue state back into ticket status
   else the `origin` remote. Token resolution: `TENX_GITHUB_TOKEN` >
   `GITHUB_TOKEN` > `~/.git-credentials`. The token is never written
   into `.tenx/` or the activity log.
-- Zero new dependencies (stdlib `urllib`).
+- Zero new dependencies (stdlib `urllib`). Network errors fail clean
+  with a `tenx sync: …` message and a non-traceback exit; re-run to
+  resume (push is idempotent). `TENX_GITHUB_API` overrides the endpoint
+  (GitHub Enterprise / tests).
 
 ### Spec-first autonomous execution
 

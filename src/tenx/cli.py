@@ -297,23 +297,29 @@ def cmd_sync(args: argparse.Namespace) -> int:
                 label_names.update(a["labels"])
             elif a["action"] == "update" and "labels" in a["changes"]:
                 label_names.update(a["changes"]["labels"])
-        syncmod.ensure_labels(token, repo, sorted(label_names))
         done = []
-        for a in actions:
-            if a["action"] == "create":
-                it = syncmod.create_issue(token, repo, a["title"],
-                                          a["body"], a["labels"])
-                if a["state"] == "closed":
-                    syncmod.update_issue(token, repo, it["number"],
-                                         {"state": "closed"})
-                done.append({**a, "number": it["number"],
-                             "url": it.get("html_url")})
-            elif a["action"] == "update":
-                syncmod.update_issue(token, repo, a["number"],
-                                     a["changes"])
-                done.append(a)
-            else:
-                done.append(a)
+        try:
+            syncmod.ensure_labels(token, repo, sorted(label_names))
+            for a in actions:
+                if a["action"] == "create":
+                    it = syncmod.create_issue(token, repo, a["title"],
+                                              a["body"], a["labels"])
+                    if a["state"] == "closed":
+                        syncmod.update_issue(token, repo, it["number"],
+                                             {"state": "closed"})
+                    done.append({**a, "number": it["number"],
+                                 "url": it.get("html_url")})
+                elif a["action"] == "update":
+                    syncmod.update_issue(token, repo, a["number"],
+                                         a["changes"])
+                    done.append(a)
+                else:
+                    done.append(a)
+        except syncmod.SyncError as e:
+            print(f"tenx sync: {e}", file=sys.stderr)
+            print("tenx sync: GitHub/network error; re-run to resume "
+                  "(push is idempotent).", file=sys.stderr)
+            return 2
         created = sum(1 for a in done if a["action"] == "create")
         updated = sum(1 for a in done if a["action"] == "update")
         if created or updated:

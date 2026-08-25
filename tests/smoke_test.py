@@ -589,6 +589,31 @@ def main() -> int:
         check("review skill references review + archive commands",
               "tenx review" in wrev and "tenx archive" in wrev)
 
+        # ---- sync fails clean on network error (no traceback) ----
+        syncproj = Path(tempfile.mkdtemp(prefix="tenx-syncfail-"))
+        subprocess.run(["git", "init", "-q", "."], cwd=syncproj)
+        tenx("init", cwd=syncproj)
+        subprocess.run(
+            ["git", "remote", "add", "origin",
+             "https://github.com/test/repo.git"], cwd=syncproj)
+        env = dict(os.environ)
+        env["GITHUB_TOKEN"] = "fake-token"
+        # point at a dead port so the API call fails fast and offline
+        env["TENX_GITHUB_API"] = "http://127.0.0.1:9"
+        if USE_MODULE:
+            srcdir = str(Path(__file__).resolve().parent.parent / "src")
+            env["PYTHONPATH"] = srcdir + os.pathsep + env.get(
+                "PYTHONPATH", "")
+        cmd = ([sys.executable, "-m", "tenx"] if USE_MODULE else ["tenx"])
+        sp = subprocess.run([*cmd, "sync", "push"], cwd=syncproj,
+                            env=env, capture_output=True, text=True)
+        check("sync network failure exits non-zero but clean",
+              sp.returncode in (1, 2))
+        check("sync network failure has no traceback",
+              "Traceback" not in sp.stderr)
+        check("sync network failure prints tenx sync message",
+              "tenx sync:" in sp.stderr)
+
         # session logging throttle
         tenx("hook", "emit", "--no-log", cwd=scanproj)
         tenx("hook", "emit", cwd=scanproj)

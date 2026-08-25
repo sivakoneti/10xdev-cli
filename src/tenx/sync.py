@@ -17,7 +17,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-API = "https://api.github.com"
+API = os.environ.get("TENX_GITHUB_API", "https://api.github.com")
+# TENX_GITHUB_API overrides the endpoint (GitHub Enterprise / tests).
 MARKER_RE = re.compile(r"^\[(SPC-\d{3}-T\d+)\]")
 LABEL_PREFIX = "tenx:"
 BASE_LABEL = "tenx"
@@ -126,6 +127,10 @@ def _request(token: str, method: str, path: str,
         except Exception:
             detail = {"raw": raw.decode("utf-8", "replace")[:300]}
         return e.code, detail
+    except OSError as e:
+        # URLError / socket.timeout / connection errors -> clean SyncError.
+        reason = getattr(e, "reason", None) or e
+        raise SyncError(f"network error calling {url}: {reason}") from e
 
 
 def list_issues(token: str, repo: str) -> list[dict[str, Any]]:
