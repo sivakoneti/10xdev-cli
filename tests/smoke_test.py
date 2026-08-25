@@ -550,6 +550,45 @@ def main() -> int:
         check("process skill step 1 is the update check",
               "tenx update --check" in skill)
 
+        # ---- best-practice artifact templates (design doc / OKR / ADR) ----
+        tenx("new", "spec", "Template probe", "--epic", "EPC-001",
+             cwd=scanproj)
+        probe = next((scanproj / ".tenx/specs").glob(
+            "SPC-*-template-probe.md")).read_text()
+        for sec in ("## Summary", "## Context and scope",
+                    "## Goals / non-goals", "## Design",
+                    "## Alternatives considered",
+                    "## Cross-cutting concerns", "## Validation"):
+            check(f"spec template has {sec!r}", sec in probe)
+        tenx("new", "epic", "Template probe epic", cwd=scanproj)
+        eprobe = sorted((scanproj / ".tenx/epics").glob(
+            "EPC-*-template-probe-epic.md"))[-1].read_text()
+        for sec in ("## Key results", "## Non-goals", "## Milestones"):
+            check(f"epic template has {sec!r}", sec in eprobe)
+        check("epic template frames the user (working backwards)",
+              "work backwards" in eprobe)
+        tenx("new", "doc", "Template probe doc", cwd=scanproj)
+        dprobe = sorted((scanproj / ".tenx/docs").glob(
+            "DOC-*-template-probe-doc.md"))[-1].read_text()
+        check("doc template offers ADR shape",
+              "Decision record (ADR)" in dprobe)
+        check("doc template offers blameless postmortem shape",
+              "Postmortem (blameless)" in dprobe)
+        # skills teach the same structure
+        wspec = (scanproj / ".claude/skills/tenx-write-spec/SKILL.md"
+                 ).read_text()
+        check("write-spec skill teaches alternatives + trade-offs",
+              "Alternatives considered" in wspec
+              and "trade-off" in wspec)
+        wepic = (scanproj / ".claude/skills/tenx-write-epic/SKILL.md"
+                 ).read_text()
+        check("write-epic skill teaches key results + non-goals",
+              "Key results" in wepic and "Non-goals" in wepic)
+        wrev = (scanproj / ".claude/skills/tenx-review/SKILL.md"
+                ).read_text()
+        check("review skill references review + archive commands",
+              "tenx review" in wrev and "tenx archive" in wrev)
+
         # session logging throttle
         tenx("hook", "emit", "--no-log", cwd=scanproj)
         tenx("hook", "emit", cwd=scanproj)

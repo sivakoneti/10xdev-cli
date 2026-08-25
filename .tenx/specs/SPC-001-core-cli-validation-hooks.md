@@ -23,25 +23,35 @@ tickets:
     title: Skills bundle + smoke test suite
     status: done
 ---
-
 ## Summary
 
-What this spec builds, in two or three sentences.
+The v0.1 core: a CLI that models epics/specs/conventions/docs as markdown
+artifacts with YAML frontmatter, validates the SDLC for drift, and emits a
+context packet + SessionStart hooks so agents brief themselves. This is the
+foundation every later epic builds on.
 
 ## Architecture
 
-Components, data flow, files touched, contracts changed. Link conventions
-that apply (CON-xxx).
+- `artifacts.py` — frontmatter parse, load/create/update, derived status.
+- `rules.py` — validation engine (drift, dangling refs, required fields).
+- `context.py` — packet builder (operator/agent, md/json).
+- `hooks.py` — SessionStart hook install + managed md blocks.
+- `cli.py` — argparse entry, one cmd_* per subcommand.
+Conventions: CON-002 (zero deps) governs all of it.
 
 ## Tickets
 
-Move tickets through todo -> in_progress -> in_review -> done. Keep the
-frontmatter `tickets:` list in sync with this section.
+- SPC-001-T1 Artifact model + zero-dep frontmatter parsing — done
+- SPC-001-T2 Validation engine with derived-status drift rule — done
+- SPC-001-T3 Context packets (operator/agent, md/json) — done
+- SPC-001-T4 SessionStart hook install for claude/codex/opencode/gemini — done
+- SPC-001-T5 Skills bundle + smoke test suite — done
 
 ## Validation
 
-How this spec is verified: commands, tests, manual checks.
+python3 tests/smoke_test.py (both modes) green; `tenx validate` clean on a
+fresh `tenx init` project; `tenx context --mode agent` renders.
 
 ## Open questions
 
-- None yet.
+- None.

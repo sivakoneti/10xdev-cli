@@ -4,30 +4,67 @@ from __future__ import annotations
 
 EPIC_BODY = """## Objective
 
-One paragraph: what outcome this epic delivers and why it matters.
+One paragraph: the outcome this epic delivers and why it matters. Name who
+benefits (the user/customer) and frame the problem from their point of view
+— start with the user and work backwards.
+
+## Key results
+
+Measurable outcomes that prove the objective was met (2-5). Each must be
+verifiable, not an activity: "reduce p95 latency to <200ms", not "improve
+performance".
+
+- KR1 —
+- KR2 —
+
+## Scope
+
+- What this epic deliberately covers.
+
+## Non-goals
+
+- Things that could reasonably be goals but are explicitly NOT. This section
+  prevents agent drift.
 
 ## Milestones
 
 - [ ] M1 —
 - [ ] M2 —
-
-## Success criteria
-
-- Measurable definition of done for the epic.
-
-## Out of scope
-
-- What this epic deliberately does not do.
 """
 
 SPEC_BODY = """## Summary
 
-What this spec builds, in two or three sentences.
+What this spec builds and why, in two or three sentences. Name the user or
+caller who benefits.
 
-## Architecture
+## Context and scope
 
-Components, data flow, files touched, contracts changed. Link conventions
-that apply (CON-xxx).
+Objective background: the landscape this is built in and what is in scope.
+Keep it succinct; link deeper detail rather than restating it.
+
+## Goals / non-goals
+
+Goals:
+- What this spec must achieve.
+
+Non-goals:
+- Things that could be goals but are explicitly not.
+
+## Design
+
+The approach and its key trade-offs: components, files touched, data flow,
+contracts changed. Link the conventions (CON-xxx) that apply. Record WHY
+this design wins given the goals, not just WHAT it is.
+
+## Alternatives considered
+
+Other designs that would have worked and the trade-off that ruled each out.
+If the solution is obvious with no real trade-off, say so in one line.
+
+## Cross-cutting concerns
+
+Security, privacy, observability, testing, backward compatibility — how each
+is affected and addressed. Delete any line that does not apply.
 
 ## Tickets
 
@@ -36,7 +73,8 @@ frontmatter `tickets:` list in sync with this section.
 
 ## Validation
 
-How this spec is verified: commands, tests, manual checks.
+Exact commands, tests, and manual checks that prove the spec complete — the
+definition of done.
 
 ## Open questions
 
@@ -72,7 +110,12 @@ What this document covers and which agent tasks need it.
 
 ## Content
 
-Write the content here.
+Write the content here. Pick the shape that fits:
+- Architecture/system doc: components, data flow, invariants, how to run.
+- Decision record (ADR): Context -> Decision -> Alternatives considered ->
+  Consequences.
+- Postmortem (blameless): Summary -> Impact -> Root cause(s) -> What we
+  learned -> Follow-up actions. Fix systems and processes, not people.
 
 ## Last verified
 
@@ -166,6 +209,9 @@ You are a senior engineer on this project. Follow this loop exactly:
 Rules:
 - Never invent process facts; they live in `.tenx/` artifacts.
 - If a convention conflicts with a spec, stop and ask the human.
+- For non-trivial work the spec (design) comes before code: capture goals,
+  non-goals, trade-offs, and alternatives first. If there is no real
+  trade-off, just build it — do not write an implementation manual.
 - If `tenx` is not installed, read `.tenx/README.md` and follow it manually.
 """,
     "tenx-write-epic": """---
@@ -175,14 +221,19 @@ description: How to author a tenx epic artifact (EPC). Use when creating or revi
 
 # Writing an epic
 
-Create with `tenx new epic "Title"`. An epic defines WHAT we build and the
-milestones to get there — not how (that belongs in specs).
+Create with `tenx new epic "Title"`. An epic defines WHAT we build and why —
+not how (that belongs in specs). Model it on OKRs and the working-backwards
+habit of starting from the user.
 
 Requirements:
-- Objective: one paragraph, outcome-focused, says why it matters.
+- Objective: one paragraph, outcome-focused. Name who benefits and frame the
+  problem from their point of view.
+- Key results: 2-5 measurable outcomes that prove the objective. Each must be
+  verifiable, not an activity ("reduce p95 latency to <200ms", not "improve
+  performance").
+- Scope and Non-goals: non-goals are mandatory — things that could reasonably
+  be goals but are explicitly not. They prevent agent drift.
 - 2-6 milestones, each independently checkable.
-- Success criteria must be measurable.
-- Out-of-scope section is mandatory; it prevents agent drift.
 - Status lifecycle: draft -> in_review -> complete.
 - Every spec references exactly one epic via `epic: EPC-xxx`.
 """,
@@ -193,16 +244,27 @@ description: How to author a tenx spec artifact (SPC). Use when creating or revi
 
 # Writing a spec
 
-Create with `tenx new spec "Title" --epic EPC-001`. A spec is the
-ticket-by-ticket technical plan an agent can execute unattended.
+Create with `tenx new spec "Title" --epic EPC-001`. A spec is a lightweight
+design doc plus a ticket-by-ticket plan an agent can execute unattended.
+Follow the classic design-doc shape: context, goals/non-goals, design with
+trade-offs, alternatives, cross-cutting concerns.
 
 Requirements:
-- Architecture section names components, files, contracts, and the
-  conventions (CON-xxx) that apply.
-- Break the work into tickets in the frontmatter `tickets:` list; each
-  ticket has id `<SPEC-ID>-T<n>`, title, and status (start at `todo`).
-- Keep the markdown Tickets section in sync with the frontmatter list.
-- Validation section lists exact commands/tests that prove the spec done.
+- Summary and Validation sections are required (`tenx validate` checks them).
+- Context and scope: objective background, kept succinct; link deeper detail.
+- Goals / non-goals: name both; non-goals prevent drift.
+- Design: record WHY this approach wins given the goals, not just WHAT. Link
+  the conventions (CON-xxx) that apply.
+- Alternatives considered: list real alternatives and the trade-off that
+  ruled each out. If there is no real trade-off, say so in one line — a spec
+  with no trade-offs may not have needed a spec (just build it).
+- Cross-cutting concerns: security, privacy, observability, testing,
+  backward compatibility.
+- Break work into tickets in the frontmatter `tickets:` list; each ticket has
+  id `<SPEC-ID>-T<n>`, title, and status (start at `todo`). Keep the markdown
+  Tickets section in sync with the frontmatter list.
+- Validation lists exact commands/tests that prove the spec done (definition
+  of done).
 - A spec is only `complete` when every ticket is `done`
   (`tenx validate` derives and enforces this).
 """,
@@ -225,33 +287,46 @@ Requirements:
 """,
     "tenx-write-doc": """---
 name: tenx-write-doc
-description: How to author a tenx doc artifact (DOC). Use for architecture notes, decisions, external systems, deployment facts.
+description: How to author a tenx doc artifact (DOC). Use for architecture notes, decisions, external systems, deployment facts, postmortems.
 ---
 
 # Writing a doc
 
 Create with `tenx new doc "Title"`. Docs hold everything an agent might need
 that is not a plan or a rule: architecture overviews, decision records,
-external system configuration, deployment topology, user feedback.
+external system configuration, deployment topology, postmortems.
 
 Requirements:
 - Purpose section says which agent tasks need this doc.
 - Record facts an agent cannot derive from the codebase alone
   (env vars that exist, hosting setup, third-party accounts).
+- Pick the right shape for the content:
+  - Architecture/system: components, data flow, invariants, how to run.
+  - Decision record (ADR): Context -> Decision -> Alternatives considered ->
+    Consequences.
+  - Postmortem (blameless): Summary -> Impact -> Root cause(s) -> What we
+    learned -> Follow-up actions. Fix systems and processes, not people.
 - Bump `updated` whenever content changes; stale docs get flagged.
 """,
     "tenx-review": """---
 name: tenx-review
-description: Review pass for tenx artifacts and finished tickets. Use when a spec or epic enters in_review.
+description: Review pass for tenx artifacts and finished tickets. Use when a spec or epic enters in_review, or to archive completed epics.
 ---
 
 # Reviewing
 
 1. `tenx validate` — fix every error first.
-2. For each in_review spec: read the spec, then diff the code against it.
-   Every ticket marked done must have its validation evidence.
-3. Check conventions compliance on the changed code.
-4. If good: `tenx set <ID> status complete` and `tenx log "review passed" --ref <ID>`.
-   If not: move blocking tickets back to in_progress with a log entry saying why.
+2. `tenx review` lists what is ready to review (in_review specs/epics and
+   done tickets). Work through that queue.
+3. For each in_review spec: read the spec, then diff the code against it.
+   Every ticket marked done must have its validation evidence (the spec's
+   Validation section is the definition of done).
+4. Check conventions compliance on the changed code (read
+   `.tenx/conventions/INDEX.md` and every entry).
+5. If good: `tenx set <ID> status complete` and `tenx log "review passed"
+   --ref <ID>`. If not: move blocking tickets back to in_progress with a log
+   entry saying why.
+6. When an epic and all its specs are complete, `tenx archive <EPC-ID>` moves
+   it out of the active queue (blameless — archive is a record, not a grade).
 """,
 }

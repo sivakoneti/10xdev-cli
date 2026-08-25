@@ -169,6 +169,27 @@ tickets:
 ---
 ```
 
+### Artifact shapes (best-practice defaults)
+
+`tenx new` seeds each artifact with a structure modeled on how top
+engineering orgs plan work, so a fresh project starts world-class:
+
+- **epic** — OKR-style: Objective (who benefits, working backwards from the
+  user), measurable **Key results**, Scope, **Non-goals**, Milestones.
+- **spec** — design-doc style: Summary, Context and scope, Goals/non-goals,
+  Design (with trade-offs), **Alternatives considered**, Cross-cutting
+  concerns (security/privacy/observability/testing), Tickets, Validation
+  (definition of done).
+- **convention** — one imperative Rule, the Why (failure it prevents),
+  Applies-to, and a good/bad example.
+- **doc** — Purpose plus a shape that fits: architecture/system, a decision
+  record (Context → Decision → Alternatives → Consequences), or a blameless
+  postmortem (Summary → Impact → Root cause → Learnings → Follow-ups).
+
+The matching `tenx-write-*` skills teach the same structures. Only `## Summary`
+and `## Validation` are enforced on specs (`tenx validate`); the rest are
+guidance, so existing artifacts are never flagged.
+
 ## Command reference
 
 ```bash
