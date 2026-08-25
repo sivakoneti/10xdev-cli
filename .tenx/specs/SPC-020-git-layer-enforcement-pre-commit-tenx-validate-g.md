@@ -2,7 +2,7 @@
 id: SPC-020
 type: spec
 title: Git-layer enforcement — pre-commit tenx validate gate
-status: in_progress
+status: complete
 epic: EPC-011
 created: 2026-08-25
 updated: 2026-08-25

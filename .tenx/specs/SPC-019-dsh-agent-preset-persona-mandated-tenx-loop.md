@@ -2,7 +2,7 @@
 id: SPC-019
 type: spec
 title: DSH agent preset — persona-mandated tenx loop
-status: in_progress
+status: complete
 epic: EPC-011
 created: 2026-08-25
 updated: 2026-08-25

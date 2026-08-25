@@ -2,7 +2,7 @@
 id: SPC-021
 type: spec
 title: Hardened universal mandate block + forced-tier wiring
-status: in_progress
+status: complete
 epic: EPC-011
 created: 2026-08-25
 updated: 2026-08-25
