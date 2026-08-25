@@ -160,6 +160,30 @@ def _tooldefs() -> list[dict[str, Any]]:
              "spec": {**S, "description": "spec id, e.g. SPC-002"}},
              "required": ["spec"]},
          "handler": mk(C.cmd_exec, {"json": False})},
+        {"name": "tenx_changelog",
+         "description": "Docs-sync: manage the Keep-a-Changelog "
+                        "CHANGELOG.md. action=show prints it; action=add "
+                        "appends an entry to [Unreleased] (pass text, "
+                        "optional type/ref); action=release stamps "
+                        "[Unreleased] into a dated version (pass "
+                        "text=version). Add an entry whenever you ship "
+                        "work - the evidence gate requires one before a "
+                        "spec/epic can be completed.",
+         "inputSchema": {"type": "object", "properties": {
+             "action": {"type": "string",
+                        "enum": ["show", "add", "release"],
+                        "description": "show (default) | add | release"},
+             "text": {**S,
+                      "description": "message for add, version for release"},
+             "type": {"type": "string",
+                      "enum": ["added", "changed", "deprecated", "removed",
+                               "fixed", "security"],
+                      "description": "change type for add (default added)"},
+             "ref": {**S,
+                     "description": "artifact ref to tag onto an add entry"}}},
+         "handler": mk(C.cmd_changelog, {"action": "show", "text": None,
+                                         "type": "Added", "ref": None,
+                                         "json": False})},
     ]
 
 

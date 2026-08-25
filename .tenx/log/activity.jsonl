@@ -46,3 +46,5 @@
 {"ts": "2026-08-25T04:27:22+00:00", "type": "progress", "actor": "agent", "message": "github sync push to sivakoneti/10xdev-cli: 6 created, 0 updated"}
 {"ts": "2026-08-25T05:35:00+00:00", "type": "progress", "actor": "agent", "message": "shipped concurrency-safe harness state (locking + atomic writes)", "ref": "SPC-017"}
 {"ts": "2026-08-25T05:37:41+00:00", "type": "progress", "actor": "agent", "message": "github sync push to sivakoneti/10xdev-cli: 4 created, 0 updated"}
+{"ts": "2026-08-25T08:29:49+00:00", "type": "progress", "actor": "agent", "message": "docs-sync built: changelog command, 3 drift rules, evidence-gate changelog requirement, MCP tool, tenx-docs-sync skill, README/DOC-001 docs, 206-check smoke green", "ref": "SPC-018"}
+{"ts": "2026-08-25T08:30:53+00:00", "type": "progress", "actor": "agent", "message": "EPC-010 docs-sync delivered: changelog discipline + drift detection folded into the enforced completion path", "ref": "EPC-010"}

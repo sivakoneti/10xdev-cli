@@ -202,7 +202,9 @@ You are a senior engineer on this project. Follow this loop exactly:
 5. **Do the work.** Small, verifiable steps. Follow all conventions.
 6. **Write back.** After each significant step run
    `tenx log "what changed" --ref <ID>` and update ticket statuses
-   (`tenx ticket <SPEC-ID> <TICKET-ID> <status>`).
+   (`tenx ticket <SPEC-ID> <TICKET-ID> <status>`). When you ship a behavior
+   change, note it in the changelog in the same step (docs-sync):
+   `tenx changelog add "what changed" --ref <ID>`.
 7. **Validate.** Before ending, run `tenx validate`. Fix any drift you
    introduced. Never leave new errors behind.
 
@@ -210,6 +212,9 @@ Landing discipline (applies to every ticket you finish):
 - **Evidence before done.** Only mark a ticket `done` when `tenx validate`
   passes and the spec's Validation section is satisfied (tests run, output
   quoted). No evidence, no done.
+- **Docs are part of done.** A spec/epic cannot be marked complete until its
+  shipped work is noted in CHANGELOG.md
+  (`tenx changelog add "..." --ref <ID>`). The evidence gate enforces this.
 - **Bounded fix loop.** If work bounces back from review, fix and retry —
   at most 2 cycles. Still failing? Stop and escalate to the human with the
   concrete failure instead of looping.
@@ -392,5 +397,40 @@ you rank, classify, and escalate.
 - Prefer `tenx triage --json` when another program consumes the output.
 - If there is nothing to escalate, say so plainly - silence is a valid report.
 - Keep the report short. One line per item. No prose padding.
+""",
+    "tenx-docs-sync": """---
+name: tenx-docs-sync
+description: Keep documentation in sync with shipped work. Maintain the Keep-a-Changelog CHANGELOG.md so READMEs and notes never drift from the code. Runs the changelog discipline and surfaces drift.
+---
+
+# Docs-sync (changelog discipline)
+
+Documentation drifts because code changes have an enforced merge path while
+doc updates are a separate manual step. This skill folds the doc update into
+the path: every time you ship something, note it in the changelog.
+
+## Loop
+
+1. `tenx changelog` - read the current CHANGELOG.md (Keep a Changelog shape:
+   an `[Unreleased]` section at the top, released versions below with dates).
+2. Whenever you finish a spec/ticket or ship a behavior change, immediately:
+   `tenx changelog add "<what changed>" --type <added|changed|deprecated|removed|fixed|security> --ref <ID>`
+   Do this in the same step you mark the work complete - not later.
+3. When cutting a release: `tenx changelog release v<X.Y.Z>`. This stamps
+   `[Unreleased]` into a dated version and reopens a fresh `[Unreleased]`.
+4. `tenx validate` - watch for docs-drift findings:
+   - `changelog-missing` (no CHANGELOG.md; run `tenx init` or add one)
+   - `changelog-format` (no `[Unreleased]` section)
+   - `changelog-unreleased-empty` (completed work has no changelog entry)
+
+## Rules
+
+- The evidence gate requires a changelog entry referencing a spec/epic before
+  it can be marked complete. Add the entry first; do not `--force` past it
+  unless a human says so.
+- Write entries for humans, not as git-log dumps. One clear line per change.
+- Group by the Keep a Changelog types; put each entry under the right type.
+- Keep the latest version first; never reorder released history.
+- Prefer `tenx changelog --json` when another program consumes the output.
 """,
 }

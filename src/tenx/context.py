@@ -32,6 +32,9 @@ PROTOCOL = """## Operating protocol (always follow)
 4. Keep ticket statuses in sync as you work:
    `tenx ticket <SPEC-ID> <TICKET-ID> <status>`.
 5. After significant work, write back: `tenx log "what changed" --ref <ID>`.
+   When you ship a behavior change, also note it in the changelog (docs-sync):
+   `tenx changelog add "what changed" --ref <ID>` — the evidence gate requires
+   a changelog entry before a spec/epic can be marked complete.
 6. Before ending a session run `tenx validate` and fix any drift you
    introduced. Never leave new errors behind.
 7. Process facts live in `.tenx/` artifacts. Do not invent them; if a

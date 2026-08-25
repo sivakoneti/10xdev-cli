@@ -26,12 +26,18 @@ touching `src/tenx/`.
                      importable)
       templates.py   artifact body templates, config/harness-README templates,
                      bundled skill texts
-      rules.py       validation engine: RULE_CATALOG (30 rules) + _rule_*
+      rules.py       validation engine: RULE_CATALOG (33 rules) + _rule_*
                      functions + convention index rebuild; `tenx validate
                      --list-rules` prints the catalog
       context.py     context packet builder (operator/agent modes, md/json,
                      --budget truncation) + the operating PROTOCOL text
       nextup.py      prioritized work-queue derivation for `tenx next`
+      watchdog.py    `tenx watchdog`: ranked attention items + are-they-handled
+                     verdicts from recent activity
+      triage.py      `tenx triage`: act-now/watch/healthy classification + the
+                     single top human escalation
+      gate.py        enforced evidence gate (clean validate + done tickets +
+                     linked evidence + changelog entry) on spec/epic -> complete
       activity.py    append-only JSONL activity log + throttled session entries
       execbrief.py   `tenx exec` autonomous execution brief builder
       adapters.py    data-driven adapter registry (~29 agent harnesses:
@@ -45,13 +51,15 @@ touching `src/tenx/`.
       sync.py        `tenx sync push|pull`: spec tickets <-> GitHub Issues
                      ([SPC-xxx-Tn] markers, label, token chain incl.
                      ~/.git-credentials)
-      mcp.py         `tenx mcp`: stdio MCP JSON-RPC server exposing 10 tools;
+      mcp.py         `tenx mcp`: stdio MCP JSON-RPC server exposing 13 tools;
                      `tenx mcp install` writes managed .mcp.json
       update.py      `tenx update [--check]`: self-update (GitHub Releases API
                      -> branch pyproject.toml fallback; offline-tolerant;
+                     uv/pipx upgrade detection)
+      changelog.py   `tenx changelog`: Keep-a-Changelog CHANGELOG.md discipline
+                     (show/add/release) + docs-drift helpers for the rules/gate
       locking.py     per-project advisory lock (.tenx/.lock) + atomic_write_text;
                      serializes mutating commands so concurrent agents are safe
-                     uv/pipx upgrade detection)
 
 ## Key invariants
 

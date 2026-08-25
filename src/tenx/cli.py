@@ -131,8 +131,12 @@ def cmd_init(args: argparse.Namespace) -> int:
     readme = hroot / "README.md"
     if not readme.exists():
         readme.write_text(HARNESS_README, encoding="utf-8")
+    from . import changelog as _cl
+    seeded_cl = _cl.seed_changelog(root)
     print(f"Initialized tenx harness at {hroot}")
     print("  config.yaml, epics/, specs/, conventions/, docs/, log/")
+    if seeded_cl:
+        print("  seeded CHANGELOG.md (Keep a Changelog - docs-sync)")
     if link_written is not None:
         print(f"  wrote pointer {link_written} -> {root}")
 
@@ -965,6 +969,55 @@ def cmd_update(args: argparse.Namespace) -> int:
     return run_update(__version__, check_only=args.check, as_json=args.json)
 
 
+def cmd_changelog(args: argparse.Namespace) -> int:
+    """Manage the Keep-a-Changelog CHANGELOG.md (docs-sync discipline).
+
+    show (default): print the changelog. add: append an entry to [Unreleased].
+    release: stamp [Unreleased] into a dated version and reopen [Unreleased].
+    """
+    from . import changelog as cl
+    root = _root_or_die(args.root)
+    _require_init(root)
+    action = getattr(args, "action", "show") or "show"
+    if action == "show":
+        p = cl.changelog_path(root)
+        if args.json:
+            print(json.dumps(cl.to_dict(root), indent=2))
+            return 0
+        if not p.exists():
+            print("tenx changelog: no CHANGELOG.md yet - run "
+                  "`tenx changelog add \"...\"` to start one.")
+            return 0
+        sys.stdout.write(p.read_text(encoding="utf-8"))
+        return 0
+    if action == "add":
+        if not args.text:
+            print("tenx changelog add: provide a message, e.g. "
+                  "`tenx changelog add \"shipped X\"`", file=sys.stderr)
+            return 2
+        sec = cl.add_entry(root, args.text, type=args.type, ref=args.ref)
+        typ = next((t for t in cl.TYPES
+                    if t.lower() == (args.type or "added").lower()), "Added")
+        print(f"changelog: added under [Unreleased]/{typ}: {args.text}")
+        return 0
+    if action == "release":
+        if not args.text:
+            print("tenx changelog release: provide a version, e.g. "
+                  "`tenx changelog release v0.16.0`", file=sys.stderr)
+            return 2
+        try:
+            sec = cl.release(root, args.text)
+        except ValueError as exc:
+            print(f"tenx changelog release: {exc}", file=sys.stderr)
+            return 2
+        print(f"changelog: released [{sec.label}] - {sec.date}; "
+              f"reopened [Unreleased]")
+        return 0
+    print(f"tenx changelog: unknown action {action!r} "
+          f"(use show, add, or release)", file=sys.stderr)
+    return 2
+
+
 # ------------------------------------------------------------------ parser
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1153,13 +1206,30 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_update)
 
+    sp = sub.add_parser("changelog",
+                        help="manage the Keep-a-Changelog CHANGELOG.md "
+                             "(docs-sync: add an entry when you ship, "
+                             "release when you cut a version)")
+    sp.add_argument("action", nargs="?", default="show",
+                    choices=["show", "add", "release"],
+                    help="show (default) | add | release")
+    sp.add_argument("text", nargs="?", default=None,
+                    help="message for `add`, version for `release`")
+    sp.add_argument("--type", default="Added",
+                    help="change type for add: added/changed/deprecated/"
+                         "removed/fixed/security (default added)")
+    sp.add_argument("--ref", default=None,
+                    help="artifact ref to tag onto an add entry (e.g. SPC-018)")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=cmd_changelog)
+
     return p
 
 
 # Commands that write `.tenx` state. They are serialized behind a per-project
 # advisory lock so a fleet of concurrent agents cannot lose or corrupt writes.
 MUTATING_COMMANDS = {"init", "new", "set", "ticket", "log", "archive",
-                     "hook", "skills", "sync", "validate"}
+                     "hook", "skills", "sync", "validate", "changelog"}
 
 
 def _lock_root(args: argparse.Namespace) -> Path | None:

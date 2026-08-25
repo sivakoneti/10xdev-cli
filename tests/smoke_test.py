@@ -359,7 +359,7 @@ def main() -> int:
         check("mcp initialize negotiates",
               resp[1]["result"]["serverInfo"]["name"] == "tenx")
         tool_names = {t["name"] for t in resp[2]["result"]["tools"]}
-        check("mcp lists 12 tools", len(tool_names) == 12,
+        check("mcp lists 13 tools", len(tool_names) == 13,
               str(tool_names))
         check("mcp exposes tenx_context", "tenx_context" in tool_names)
         check("mcp exposes tenx_watchdog", "tenx_watchdog" in tool_names)
@@ -484,6 +484,8 @@ def main() -> int:
         # passes once ticket done + evidence logged
         tenx("ticket", "SPC-001", "SPC-001-T1", "done", cwd=gateproj)
         tenx("log", "did the gate work", "--ref", "SPC-001", cwd=gateproj)
+        tenx("changelog", "add", "gate work", "--ref", "SPC-001",
+             cwd=gateproj)
         tenx("set", "SPC-001", "status", "complete", cwd=gateproj)
         meta = json.loads(tenx("show", "SPC-001", "--json",
                                cwd=gateproj).stdout)["meta"]
@@ -498,6 +500,8 @@ def main() -> int:
         # evidence field path
         tenx("new", "spec", "Ev spec", "--epic", "EPC-001", cwd=gateproj)
         tenx("set", "SPC-003", "evidence", "smoke green 2026-08-25",
+             cwd=gateproj)
+        tenx("changelog", "add", "ev work", "--ref", "SPC-003",
              cwd=gateproj)
         tenx("set", "SPC-003", "status", "complete", cwd=gateproj)
         meta = json.loads(tenx("show", "SPC-003", "--json",
@@ -532,7 +536,7 @@ def main() -> int:
                    for f in d.get(k, [])}
         check("catalog covers emitted rules", emitted <= cat_ids,
               str(emitted - cat_ids))
-        check("catalog has 30 rules", len(cat) == 30, str(len(cat)))
+        check("catalog has 33 rules", len(cat) == 33, str(len(cat)))
 
         # ---- tenx review + archive ----
         tenx("new", "epic", "Review epic", cwd=scanproj)
@@ -913,6 +917,96 @@ def main() -> int:
               "Traceback" not in sp.stderr)
         check("sync network failure prints tenx sync message",
               "tenx sync:" in sp.stderr)
+
+        # ---- SPC-018 docs-sync: changelog discipline + drift rules ----
+        from tenx import changelog as _cl
+        docsproj = Path(tempfile.mkdtemp(prefix="tenx-docs-"))
+        tenx("init", "--name", "docs", cwd=docsproj)
+        cl_file = docsproj / "CHANGELOG.md"
+        check("init seeds CHANGELOG.md", cl_file.is_file())
+        check("seeded changelog has [Unreleased]",
+              "[Unreleased]" in cl_file.read_text())
+        check("seed_changelog idempotent",
+              _cl.seed_changelog(docsproj) is False)
+        # add / show / release
+        tenx("changelog", "add", "shipped the widget", "--type", "added",
+             "--ref", "SPC-001", cwd=docsproj)
+        tenx("changelog", "add", "fixed a crash", "--type", "fixed",
+             cwd=docsproj)
+        out = tenx("changelog", cwd=docsproj).stdout
+        check("changelog add lands under Unreleased/Added",
+              "shipped the widget (SPC-001)" in out)
+        check("changelog groups by type",
+              "### Added" in out and "### Fixed" in out)
+        cj = json.loads(tenx("changelog", "--json", cwd=docsproj).stdout)
+        check("changelog --json shape",
+              cj["exists"] is True and cj["unreleased"] == 2
+              and cj["latest_version"] is None)
+        tenx("changelog", "release", "v9.9.9", cwd=docsproj)
+        cj = json.loads(tenx("changelog", "--json", cwd=docsproj).stdout)
+        check("changelog release stamps a version",
+              cj["latest_version"] == "9.9.9" and cj["unreleased"] == 0)
+        check("changelog release reopens [Unreleased]",
+              "[Unreleased]" in cl_file.read_text())
+        # release with empty Unreleased fails clean
+        r = tenx("changelog", "release", "v9.9.10", cwd=docsproj,
+                 expect_rc=2)
+        check("changelog release empty fails clean",
+              r.returncode == 2 and "Traceback" not in r.stderr)
+        # drift rule: changelog-missing
+        cl_file.unlink()
+        out = tenx("validate", "--json", cwd=docsproj).stdout
+        warns = json.loads(out)["warnings"]
+        check("changelog-missing rule fires",
+              any(w["rule"] == "changelog-missing" for w in warns))
+        # restore + drift rule: changelog-unreleased-empty
+        tenx("changelog", "add", "restore", cwd=docsproj)
+        tenx("new", "epic", "Docs epic", cwd=docsproj)
+        tenx("new", "spec", "Docs spec", "--epic", "EPC-001", cwd=docsproj)
+        tenx("log", "did docs work", "--ref", "SPC-001", cwd=docsproj)
+        # backdate the release so the completed spec counts as "since release"
+        tenx("changelog", "release", "v9.9.8", cwd=docsproj)
+        import datetime as _dt
+        _yest = (_dt.date.today() - _dt.timedelta(days=1)).isoformat()
+        cl_file.write_text(cl_file.read_text().replace(
+            f"## [v9.9.8] - {_dt.date.today().isoformat()}",
+            f"## [v9.9.8] - {_yest}"))
+        tenx("set", "SPC-001", "status", "complete", "--force",
+             cwd=docsproj)
+        # now Unreleased is empty and SPC-001 completed after release date
+        out = tenx("validate", "--json", cwd=docsproj).stdout
+        infos = json.loads(out)["info"]
+        check("changelog-unreleased-empty rule fires",
+              any(i["rule"] == "changelog-unreleased-empty" for i in infos),
+              str(infos))
+        # evidence gate requires a changelog entry referencing the artifact
+        tenx("new", "spec", "Gated spec", "--epic", "EPC-001", cwd=docsproj)
+        tenx("log", "did gated work", "--ref", "SPC-002", cwd=docsproj)
+        r = tenx("set", "SPC-002", "status", "complete", cwd=docsproj,
+                 expect_rc=2)
+        check("evidence gate blocks without changelog entry",
+              r.returncode == 2 and "changelog" in r.stderr, r.stderr[:300])
+        tenx("changelog", "add", "shipped gated spec", "--ref", "SPC-002",
+             cwd=docsproj)
+        tenx("set", "SPC-002", "status", "complete", cwd=docsproj)
+        out = tenx("show", "SPC-002", "--json", cwd=docsproj).stdout
+        check("evidence gate passes with changelog entry",
+              json.loads(out)["meta"]["status"] == "complete")
+        # skill + mcp + process-skill surfaces
+        tenx("skills", "install", cwd=docsproj)
+        dskill = docsproj / ".claude/skills/tenx-docs-sync/SKILL.md"
+        check("tenx-docs-sync skill installed", dskill.is_file())
+        if dskill.is_file():
+            check("docs-sync skill teaches the changelog loop",
+                  "tenx changelog add" in dskill.read_text())
+        from tenx.mcp import _tooldefs as _td
+        check("mcp registers tenx_changelog",
+              "tenx_changelog" in {t["name"] for t in _td()})
+        dproc = (docsproj / ".claude/skills/tenx-process/SKILL.md"
+                 ).read_text()
+        check("process skill teaches docs-sync write-back",
+              "tenx changelog add" in dproc)
+        shutil.rmtree(docsproj, ignore_errors=True)
 
         # session logging throttle
         tenx("hook", "emit", "--no-log", cwd=scanproj)

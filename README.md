@@ -238,6 +238,9 @@ tenx hook [--mode agent] [--budget N] [--no-log]  # emit the packet; logs a thro
 tenx hook install --agent <id|all|detected>  # see `tenx hook detect`
 tenx doctor                      # health check
 tenx update [--check] [--json]   # self-update; --check reports only
+tenx changelog [show]            # print the Keep-a-Changelog CHANGELOG.md
+tenx changelog add "msg" [--type added|changed|deprecated|removed|fixed|security] [--ref SPC-001]
+tenx changelog release v0.16.0   # stamp [Unreleased] into a dated version
 ```
 
 ### Onboard an existing codebase in one command
@@ -374,23 +377,46 @@ final merge.
 
 The **evidence gate is enforced by the CLI**: `tenx set <ID> status complete`
 for a spec/epic is blocked unless `tenx validate` is clean for that artifact,
-its tickets are done, and evidence is linked (a `--ref` log entry or an
-`evidence:` field). `--force` is the explicit human override, and
+its tickets are done, evidence is linked (a `--ref` log entry or an
+`evidence:` field), and the shipped work is noted in `CHANGELOG.md`
+(docs-sync). `--force` is the explicit human override, and
 `evidence_gate: off` in `.tenx/config.yaml` disables it per project.
+
+## Docs-sync (keep documentation in sync with code)
+
+Documentation drifts because code changes have an enforced merge path while
+doc updates are a separate manual step. tenx folds the doc update into the
+path, following [Keep a Changelog](https://keepachangelog.com/) and
+docs-as-code practice:
+
+- `tenx init` seeds a `CHANGELOG.md` (an `[Unreleased]` section at the top).
+- When you ship something, note it in the same step you mark the work done:
+  `tenx changelog add "what changed" --type fixed --ref SPC-001`.
+- When you cut a release, `tenx changelog release v0.16.0` stamps
+  `[Unreleased]` into a dated version and reopens a fresh `[Unreleased]`.
+- `tenx validate` flags docs drift (`changelog-missing`, `changelog-format`,
+  `changelog-unreleased-empty`).
+- The **evidence gate** requires a changelog entry referencing a spec/epic
+  before it can be marked `complete` — docs are part of done. Override with
+  `--force` (human) only.
+
+The `tenx-docs-sync` skill and the `tenx_changelog` MCP tool expose the same
+discipline to agents.
 
 ## Validation rules
 
-`tenx validate` lints the SDLC with 29 rules. The catalog
+`tenx validate` lints the SDLC with 33 rules. The catalog
 below is generated from `RULE_CATALOG` in `src/tenx/rules.py`; run
 `tenx validate --list-rules` (or `--list-rules --json`) to print it from
 the CLI at any time — no project needed.
-
-**Harness & frontmatter**
 
 | Rule | Default | What it catches |
 |------|---------|-----------------|
 | `archived-epic-active-specs` | warning | epic is archived but one or more of its specs are not |
 | `blocker-unresolved` | info | recent blocker log entry has no follow-up progress/decision entry (param: blocker_days) |
+| `changelog-format` | warning | CHANGELOG.md has no [Unreleased] section (Keep a Changelog keeps one at the top) |
+| `changelog-missing` | warning | no CHANGELOG.md; docs-sync is off. Run `tenx changelog add ...` to start one |
+| `changelog-unreleased-empty` | info | completed work has no [Unreleased] changelog entry; run `tenx changelog add ...` |
 | `config-code-root` | error | config declares a code_root that does not exist |
 | `convention-empty-body` | warning | convention body has too little content to be followed (param: min_convention_chars) |
 | `convention-index` | warning | conventions/INDEX.md drifts from the convention files (run `tenx validate --fix`) |

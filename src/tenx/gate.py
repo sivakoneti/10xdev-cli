@@ -4,9 +4,11 @@ The landing discipline (SPC-014) teaches "evidence before done". This module
 makes it *policy*: transitioning a spec or epic to `complete` is blocked unless
 
   1. validation has no errors attributed to the artifact,
-  2. for a spec, every ticket is `done`, and
+  2. for a spec, every ticket is `done`,
   3. evidence is linked - an `evidence:` frontmatter field OR a substantive
-     activity-log entry referencing the artifact.
+     activity-log entry referencing the artifact, and
+  4. docs-sync: a CHANGELOG.md entry references the artifact (so shipped work
+     is documented). Skipped when the project has no CHANGELOG.md.
 
 A human can override with `--force` on `tenx set`, or disable the gate
 per-project via `evidence_gate: off` in `.tenx/config.yaml`.
@@ -50,6 +52,36 @@ def _has_evidence_log(project_root: Path, artifact_id: str) -> bool:
     return False
 
 
+def _has_changelog_entry(project_root: Path,
+                         wanted_ids: list[str]) -> bool | None:
+    """Docs-sync evidence. Returns True if a [Unreleased] changelog entry
+    references any of `wanted_ids`, False if a changelog exists but none
+    does, or None if the project has no CHANGELOG.md (skip the requirement).
+
+    For a spec the wanted id is just the spec; for an epic it is the epic
+    plus its specs, so aggregate work documented via its specs counts."""
+    from . import changelog as cl
+    p = cl.changelog_path(project_root)
+    if not p.is_file():
+        return None
+    wants = {w.upper() for w in wanted_ids if w}
+    if not wants:
+        return False
+    try:
+        _pre, sections = cl.parse_changelog(p.read_text(encoding="utf-8"))
+    except OSError:
+        return None
+    for s in sections:
+        if not s.is_unreleased:
+            continue
+        for msgs in s.entries.values():
+            for m in msgs:
+                up = m.upper()
+                if any(w in up for w in wants):
+                    return True
+    return False
+
+
 def check_evidence_gate(project_root: Path, harness: Harness, art: Artifact,
                         ruleset: Any) -> tuple[bool, list[str]]:
     """Return (ok, reasons). Call only on a spec/epic -> complete transition.
@@ -83,5 +115,17 @@ def check_evidence_gate(project_root: Path, harness: Harness, art: Artifact,
             f"`tenx log ... --ref {art.id}`, or attach it with "
             f"`tenx set {art.id} evidence <link/command>`, or re-run with "
             f"--force (human override)")
+
+    # 4. docs-sync: shipped work must be noted in the changelog. An epic is
+    #    satisfied by an entry referencing it or any of its specs.
+    wanted = [art.id]
+    if art.type == "epic":
+        wanted += [s.id for s in harness.specs_for_epic(art.id)]
+    cl_state = _has_changelog_entry(project_root, wanted)
+    if cl_state is False:
+        reasons.append(
+            f"no changelog entry for {art.id} - document the shipped work "
+            f"with `tenx changelog add \"...\" --ref {art.id}`, or re-run "
+            f"with --force (human override)")
 
     return (not reasons, reasons)

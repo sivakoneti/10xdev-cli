@@ -123,6 +123,17 @@ RULE_CATALOG: dict[str, tuple[str, str]] = {
     "blocker-unresolved": ("info",
                            "recent blocker log entry has no follow-up "
                            "progress/decision entry (param: blocker_days)"),
+    # -- docs-sync / changelog -------------------------------------------
+    "changelog-missing": ("warning",
+                          "no CHANGELOG.md; docs-sync is off. Run "
+                          "`tenx changelog add ...` to start one"),
+    "changelog-format": ("warning",
+                         "CHANGELOG.md has no [Unreleased] section "
+                         "(Keep a Changelog keeps one at the top)"),
+    "changelog-unreleased-empty": ("info",
+                                   "completed work has no [Unreleased] "
+                                   "changelog entry; run "
+                                   "`tenx changelog add ...`"),
 }
 
 
@@ -262,7 +273,49 @@ def validate(project_root: Path, harness: Harness | None = None) -> RuleSet:
     _rule_dates(harness, rs)
     _rule_activity_discipline(project_root, rs)
     _rule_log_quiet(project_root, rs)
+    _rule_changelog(project_root, harness, rs)
     return rs
+
+
+def _rule_changelog(project_root: Path, harness: Harness, rs: RuleSet) -> None:
+    """Docs-sync: keep CHANGELOG.md present, well-formed, and current."""
+    from . import changelog as cl
+    p = cl.changelog_path(project_root)
+    if not p.is_file():
+        rs.add("changelog-missing", "warning",
+               "no CHANGELOG.md; docs-sync is off. Run "
+               "`tenx changelog add \"...\"` to start one "
+               "(`tenx init` seeds it)", path=str(p))
+        return
+    try:
+        text = p.read_text(encoding="utf-8")
+    except OSError:
+        return
+    _preamble, sections = cl.parse_changelog(text)
+    if not any(s.is_unreleased for s in sections):
+        rs.add("changelog-format", "warning",
+               "CHANGELOG.md has no [Unreleased] section (Keep a Changelog "
+               "keeps one at the top); run `tenx changelog add ...`",
+               path=str(p))
+    unreleased = sum(s.count() for s in sections if s.is_unreleased)
+    if unreleased > 0:
+        return
+    # completed work since the last release with nothing noted for the next
+    rel_date = _parse_date(cl.latest_released_date(project_root))
+    shipped: list[str] = []
+    for atype in ("spec", "epic"):
+        for a in harness.by_type(atype):
+            if a.parse_error or a.status != "complete":
+                continue
+            upd = _parse_date(a.meta.get("updated"))
+            if rel_date is None or (upd and upd > rel_date):
+                shipped.append(a.id)
+    if shipped:
+        shown = ", ".join(sorted(shipped)[:5])
+        more = ", ..." if len(shipped) > 5 else ""
+        rs.add("changelog-unreleased-empty", "info",
+               f"completed work ({shown}{more}) has no [Unreleased] changelog "
+               f"entry; run `tenx changelog add ...`", path=str(p))
 
 
 def _rule_frontmatter(project_root: Path, harness: Harness, rs: RuleSet) -> None:
