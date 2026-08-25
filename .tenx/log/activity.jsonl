@@ -49,3 +49,8 @@
 {"ts": "2026-08-25T08:29:49+00:00", "type": "progress", "actor": "agent", "message": "docs-sync built: changelog command, 3 drift rules, evidence-gate changelog requirement, MCP tool, tenx-docs-sync skill, README/DOC-001 docs, 206-check smoke green", "ref": "SPC-018"}
 {"ts": "2026-08-25T08:30:53+00:00", "type": "progress", "actor": "agent", "message": "EPC-010 docs-sync delivered: changelog discipline + drift detection folded into the enforced completion path", "ref": "EPC-010"}
 {"ts": "2026-08-25T08:34:25+00:00", "type": "progress", "actor": "agent", "message": "github sync push to sivakoneti/10xdev-cli: 6 created, 0 updated"}
+{"ts": "2026-08-25T09:25:27+00:00", "type": "progress", "actor": "agent", "message": "start EPC-011 universal compliance: DSH preset + git pre-commit gate + hardened mandate block", "ref": "EPC-011"}
+{"ts": "2026-08-25T09:53:47+00:00", "type": "progress", "actor": "agent", "message": "EPC-011 built+tested: DSH preset, git pre-commit gate, hardened mandate block; smoke green both modes", "ref": "EPC-011"}
+{"ts": "2026-08-25T09:54:13+00:00", "type": "progress", "actor": "agent", "message": "DSH preset template + persona mandate implemented; smoke asserts preset.yml + agent.cordis.yml + persona content", "ref": "SPC-019"}
+{"ts": "2026-08-25T09:54:13+00:00", "type": "progress", "actor": "agent", "message": "git pre-commit hook installed by init and hook install; smoke confirms clean commit passes and non-compliant commit blocked", "ref": "SPC-020"}
+{"ts": "2026-08-25T09:54:13+00:00", "type": "progress", "actor": "agent", "message": "AGENT_MD_BLOCK and BOOTSTRAP_SNIPPET hardened with HARD RULES; README documents forced tiers; smoke asserts mandate language", "ref": "SPC-021"}

@@ -79,11 +79,15 @@ ADAPTERS: list[HarnessAdapter] = [
     HarnessAdapter(id="deepseek", name="DeepSeek CLI", bins=("deepseek",),
                    instruction_files=("AGENTS.md",)),
     HarnessAdapter(id="deepseek-harness", name="DeepSeek Harness (dsh)",
-                   bins=("dsh",), instruction_files=("AGENTS.md",)),
+                   bins=("dsh",), instruction_files=("AGENTS.md",),
+                   hook="dsh-preset",
+                   notes="forced tier: tenx agent preset mounted into the "
+                         "agent persona (tenx validate MUST pass)"),
     HarnessAdapter(id="prime-agent", name="Prime Agent",
                    bins=("prime-agent", "prime"),
                    instruction_files=("AGENTS.md",),
-                   notes="injects AGENTS.md into the system prompt"),
+                   notes="forced tier: injects AGENTS.md into the system "
+                         "prompt; pair with the git pre-commit gate"),
     HarnessAdapter(id="omp", name="Oh My Pie (omp)", bins=("omp",),
                    instruction_files=("AGENTS.md",),
                    notes="auto-discovers AGENTS.md into the system prompt; "
@@ -124,6 +128,18 @@ ADAPTERS: list[HarnessAdapter] = [
 # boot-time invariant: no two adapters may share an id
 _ids = {a.id for a in ADAPTERS}
 assert len(_ids) == len(ADAPTERS), "duplicate adapter id"
+
+
+# Ergonomic shorthands users actually type (map to canonical adapter ids).
+AGENT_ALIASES: dict[str, str] = {
+    "dsh": "deepseek-harness",
+    "agy": "antigravity",
+    "prime": "prime-agent",
+}
+
+
+def resolve_agent_alias(name: str) -> str:
+    return AGENT_ALIASES.get(name, name)
 
 
 def get_adapter(adapter_id: str) -> HarnessAdapter | None:

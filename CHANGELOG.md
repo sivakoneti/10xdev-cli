@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.17.0] - 2026-08-25
+
+### Added
+- DSH agent preset: tenx hook install --agent dsh emits a mountable preset whose persona hard-mandates the tenx loop (validate MUST pass, landing gate) (SPC-019)
+- Git pre-commit gate: tenx hook install --git (and init in a git repo) blocks commits while tenx validate reports errors — universal across all harnesses (SPC-020)
+
+### Changed
+- Hardened universal mandate block: AGENTS.md/bootstrap now state the loop as HARD RULES; per-harness forced tiers documented; agent aliases (dsh/agy/prime) (SPC-021)
+
 ## [v0.16.0] - 2026-08-25
 
 ### Added

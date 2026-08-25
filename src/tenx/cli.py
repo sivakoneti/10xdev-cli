@@ -51,7 +51,8 @@ from .execbrief import build_exec_brief
 from .discovery import (TENXLINK, code_root, env_project_root,
                         find_project_root, harness_root, is_initialized)
 from .adapters import adapter_ids, detect_adapters, get_adapter
-from .hooks import bootstrap_snippet, install as install_hook
+from .hooks import (bootstrap_snippet, install as install_hook,
+                     install_git_hook)
 from .nextup import compute_next, render_next
 from .watchdog import compute_watchdog, render_watchdog
 from .triage import compute_triage, render_triage
@@ -92,6 +93,9 @@ def cmd_init(args: argparse.Namespace) -> int:
     hroot = harness_root(root)
     if is_initialized(root) and not args.force:
         print(f"tenx: harness already initialized at {hroot}")
+        if not getattr(args, "no_hooks", False):
+            print("Ensuring agent harnesses are wired:")
+            _install_agent_surfaces(root, getattr(args, "agent", "detected"))
         return 0
     name = args.name or root.name
     desc = args.description or f"Context base for {name}"
@@ -158,9 +162,14 @@ def cmd_init(args: argparse.Namespace) -> int:
                                   "describe components, data flow, and how to "
                                   "run/test the project.\n"))
             print("  seeded DOC-001 (architecture overview skeleton)")
+    if not getattr(args, "no_hooks", False):
+        print("Wiring agent harnesses so they follow tenx:")
+        _install_agent_surfaces(root, getattr(args, "agent", "detected"))
     print("\nNext steps:")
     print(f'  tenx new epic "What we are building next"')
-    print("  tenx hook install --agent claude   # or codex/opencode/gemini/all")
+    print("  tenx context --mode agent   # what each new agent session reads")
+    if getattr(args, "no_hooks", False):
+        print("  tenx hook install --agent detected   # agent wiring was skipped")
     return 0
 
 
@@ -392,35 +401,86 @@ def cmd_sync(args: argparse.Namespace) -> int:
 
 
 
+def _install_mcp_config(target_root: Path) -> tuple[str, Path]:
+    """Write/merge the tenx MCP server into <target_root>/.mcp.json.
+
+    Idempotent. Returns (verb, path) with verb in created/updated/unchanged.
+    """
+    import json as _json
+    target = target_root / ".mcp.json"
+    server = {"command": "tenx", "args": ["mcp"]}
+    config = {"mcpServers": {"tenx": server}}
+    if target.exists():
+        try:
+            existing = _json.loads(target.read_text(encoding="utf-8"))
+        except Exception:
+            existing = {}
+        servers = existing.setdefault("mcpServers", {})
+        if servers.get("tenx") == server:
+            return "unchanged", target
+        servers["tenx"] = server
+        config = existing
+        verb = "updated"
+    else:
+        verb = "created"
+    target.write_text(_json.dumps(config, indent=2) + "\n",
+                      encoding="utf-8")
+    return verb, target
+
+
+def _install_agent_surfaces(root: Path, agent: str) -> None:
+    """Wire agent harnesses so they follow tenx out of the box.
+
+    Installs (1) instruction files + session hook for `agent`, (2) bundled
+    skills, and (3) the MCP server registration. Fault-tolerant: a failure
+    warns but never aborts `tenx init`.
+    """
+    target = code_root(root)
+    # 1. instruction files (AGENTS.md et al.) + session-start hook
+    try:
+        results = install_hook(root, agent)
+        changed = [p for c, p in results if c]
+        if changed:
+            print(f"  agent hooks: wired {len(changed)} file(s) "
+                  f"(--agent {agent})")
+            for p in changed:
+                print(f"    {p}")
+        else:
+            print(f"  agent hooks: already wired (--agent {agent})")
+    except ValueError as exc:
+        print(f"tenx: hook install skipped: {exc}", file=sys.stderr)
+    # 2. bundled skills
+    try:
+        skills_target = target / ".claude" / "skills"
+        written = install_skills(skills_target)
+        print(f"  skills: installed {len(written)} bundled skills "
+              f"-> {skills_target}")
+    except Exception as exc:  # defensive: never abort init
+        print(f"tenx: skills install skipped: {exc}", file=sys.stderr)
+    # 3. MCP registration
+    try:
+        verb, mcp_path = _install_mcp_config(target)
+        print(f"  mcp: {verb} {mcp_path}")
+    except Exception as exc:  # defensive: never abort init
+        print(f"tenx: mcp install skipped: {exc}", file=sys.stderr)
+    # 4. git pre-commit gate (the universal, harness-agnostic backstop)
+    try:
+        changed, path = install_git_hook(target)
+        verb = "installed" if changed else "already present"
+        print(f"  git gate: {verb} -> {path}")
+    except Exception as exc:  # defensive: never abort init
+        print(f"tenx: git hook install skipped: {exc}", file=sys.stderr)
+
+
 def cmd_mcp(args: argparse.Namespace) -> int:
     if getattr(args, "mcp_cmd", "serve") == "install":
         root = _root_or_die(args.root)
         _require_init(root)
-        import json as _json
-        target = code_root(root) / ".mcp.json"
-        config = {"mcpServers": {"tenx": {
-            "command": "tenx",
-            "args": ["mcp"],
-        }}}
-        if target.exists():
-            try:
-                existing = _json.loads(target.read_text(encoding="utf-8"))
-            except Exception:
-                existing = {}
-            servers = existing.setdefault("mcpServers", {})
-            if servers.get("tenx") == config["mcpServers"]["tenx"]:
-                print(f"  unchanged: {target}")
-                return 0
-            servers["tenx"] = config["mcpServers"]["tenx"]
-            config = existing
-            verb = "updated"
-        else:
-            verb = "created"
-        target.write_text(_json.dumps(config, indent=2) + "\n",
-                          encoding="utf-8")
+        verb, target = _install_mcp_config(code_root(root))
         print(f"  {verb}: {target}")
-        print("MCP-capable harnesses (Claude Code et al.) will now see "
-              "tenx tools in this project.")
+        if verb != "unchanged":
+            print("MCP-capable harnesses (Claude Code et al.) will now see "
+                  "tenx tools in this project.")
         return 0
     # serve
     from .mcp import McpServer
@@ -898,6 +958,8 @@ def cmd_hook(args: argparse.Namespace) -> int:
         except ValueError as exc:
             print(f"tenx: {exc}", file=sys.stderr)
             return 2
+        if getattr(args, "git", False):
+            results.append(install_git_hook(target))
         if target != root:
             print(f"  hook target (code repo): {target}")
         for changed, path in results:
@@ -1040,6 +1102,12 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--code-root",
                     help="path to the governed code repo (with --standalone)")
     sp.add_argument("--force", action="store_true")
+    sp.add_argument("--agent", default="detected",
+                    help="agent-harness wiring scope: an adapter id, 'all', "
+                         "or 'detected' (default: detected + AGENTS.md)")
+    sp.add_argument("--no-hooks", action="store_true",
+                    help="skip automatic agent-harness wiring "
+                         "(instruction files, skills, MCP)")
     sp.set_defaults(func=cmd_init)
 
     sp = sub.add_parser("context", help="emit context packet")
@@ -1181,8 +1249,9 @@ def build_parser() -> argparse.ArgumentParser:
                     choices=["emit", "install", "bootstrap", "detect"],
                     default="emit")
     sp.add_argument("--mode", choices=["operator", "agent"], default="agent")
+    from .adapters import AGENT_ALIASES as _AA
     sp.add_argument("--agent",
-                    choices=adapter_ids() + ["all", "detected"],
+                    choices=adapter_ids() + sorted(_AA) + ["all", "detected"],
                     default="all",
                     help="adapter id, 'all', or 'detected' (only harnesses "
                          "whose binary is on PATH)")
@@ -1190,6 +1259,10 @@ def build_parser() -> argparse.ArgumentParser:
                     help="approx. char budget for the emitted packet")
     sp.add_argument("--no-log", action="store_true",
                     help="do not write a throttled session entry on emit")
+    sp.add_argument("--git", action="store_true",
+                    help="also install the tenx pre-commit gate "
+                         "(runs `tenx validate`, blocks commits on errors; "
+                         "works on every harness)")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_hook)
 

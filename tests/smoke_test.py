@@ -123,6 +123,36 @@ def main() -> int:
         data = json.loads(tenx("context", "--json", cwd=proj).stdout)
         check("json counts", data["counts"]["specs"] == 1, str(data["counts"]))
 
+        print("== init auto-wires agent harnesses ==")
+        autoproj = tmp / "auto-wire"
+        autoproj.mkdir()
+        tenx("init", "--name", "autowire", cwd=autoproj)
+        check("init seeds AGENTS.md", (autoproj / "AGENTS.md").is_file())
+        check("init AGENTS.md has tenx block",
+              "tenx:begin" in (autoproj / "AGENTS.md").read_text())
+        check("init installs skills",
+              (autoproj / ".claude/skills/tenx-process/SKILL.md").is_file())
+        check("init registers .mcp.json", (autoproj / ".mcp.json").is_file())
+        check("init .mcp.json has tenx server",
+              "tenx" in json.loads(
+                  (autoproj / ".mcp.json").read_text())["mcpServers"])
+        # --no-hooks skips all agent wiring
+        nhproj = tmp / "no-hooks"
+        nhproj.mkdir()
+        tenx("init", "--name", "nohooks", "--no-hooks", cwd=nhproj)
+        check("init --no-hooks skips AGENTS.md",
+              not (nhproj / "AGENTS.md").exists())
+        check("init --no-hooks skips skills",
+              not (nhproj / ".claude" / "skills").exists())
+        check("init --no-hooks skips .mcp.json",
+              not (nhproj / ".mcp.json").exists())
+        # re-running init on an existing harness self-heals missing wiring
+        tenx("init", cwd=nhproj)
+        check("re-init self-heals AGENTS.md",
+              (nhproj / "AGENTS.md").is_file())
+        check("re-init self-heals skills",
+              (nhproj / ".claude/skills/tenx-process/SKILL.md").is_file())
+
         print("== hooks / skills ==")
         tenx("hook", "install", "--agent", "all", cwd=proj)
         settings = json.loads((proj / ".claude/settings.json").read_text())
@@ -174,6 +204,79 @@ def main() -> int:
         r = tenx("hook", "install", "--agent", "no-such-harness",
                  cwd=proj, expect_rc=2)
         check("unknown adapter rejected", r.returncode == 2)
+
+        print("== EPC-011: universal compliance (git gate + dsh + mandate) ==")
+        # --- SPC-021: hardened mandate block ---
+        agents_md_hard = (proj / "AGENTS.md").read_text()
+        check("mandate block has Hard rules", "Hard rules" in agents_md_hard)
+        check("mandate block: validate MUST pass", "MUST pass" in agents_md_hard)
+        check("mandate block: pre-commit gate noted", "pre-commit" in agents_md_hard)
+        boot_hard = tenx("hook", "bootstrap", cwd=proj).stdout
+        check("bootstrap has HARD RULES", "HARD RULES" in boot_hard)
+        check("bootstrap mentions pre-commit gate", "pre-commit" in boot_hard)
+
+        # --- SPC-020: git pre-commit enforcement ---
+        gitproj = tmp / "git-gate"
+        gitproj.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=gitproj, check=True)
+        subprocess.run(["git", "config", "user.email", "t@t.io"],
+                       cwd=gitproj, check=True)
+        subprocess.run(["git", "config", "user.name", "t"],
+                       cwd=gitproj, check=True)
+        tenx("init", "--name", "gitgate", cwd=gitproj)
+        ghook = gitproj / ".git" / "hooks" / "pre-commit"
+        check("init installs git pre-commit gate", ghook.is_file())
+        check("git gate is executable", os.access(ghook, os.X_OK))
+        check("git gate carries tenx marker",
+              "tenx-managed-pre-commit" in ghook.read_text())
+        (gitproj / "README.md").write_text("hi")
+        subprocess.run(["git", "add", "-A"], cwd=gitproj, check=True)
+        r = subprocess.run(["git", "commit", "-q", "-m", "clean"],
+                           cwd=gitproj, capture_output=True, text=True)
+        check("git gate allows clean commit", r.returncode == 0, r.stderr)
+        bad = gitproj / ".tenx" / "specs" / "SPC-777-bad.md"
+        bad.write_text("---\nid: SPC-777\ntype: spec\ntitle: Bad\n"
+                       "status: draft\n---\n## Summary\nx\n"
+                       "## Validation\ny\n")
+        subprocess.run(["git", "add", "-A"], cwd=gitproj, check=True)
+        r = subprocess.run(["git", "commit", "-m", "bad"],
+                           cwd=gitproj, capture_output=True, text=True)
+        check("git gate blocks non-compliant commit", r.returncode != 0)
+        check("git gate prints block message",
+              "BLOCKED" in (r.stderr + r.stdout))
+        check("git gate bypass hint", "--no-verify" in (r.stderr + r.stdout))
+        bad.unlink()
+        # --git flag also installs the hook explicitly
+        tenx("hook", "install", "--agent", "generic", "--git", cwd=gitproj)
+        check("hook install --git idempotent", ghook.is_file())
+
+        # --- SPC-019: DSH agent preset ---
+        dshproj = tmp / "dsh-preset"
+        dshproj.mkdir()
+        tenx("init", "--name", "dshp", cwd=dshproj)
+        fake_home = tmp / "fake-home"
+        fake_home.mkdir()
+        _old_home = os.environ.get("HOME")
+        os.environ["HOME"] = str(fake_home)
+        try:
+            tenx("hook", "install", "--agent", "dsh", cwd=dshproj)
+        finally:
+            if _old_home is not None:
+                os.environ["HOME"] = _old_home
+        preset_dir = dshproj / ".dsh-preset" / "tenx"
+        check("dsh preset.yml generated", (preset_dir / "preset.yml").is_file())
+        check("dsh agent.cordis.yml generated",
+              (preset_dir / "agent.cordis.yml").is_file())
+        cordis = (preset_dir / "agent.cordis.yml").read_text()
+        check("dsh persona mandates context packet",
+              "tenx context --mode agent" in cordis)
+        check("dsh persona mandates validate MUST pass", "MUST pass" in cordis)
+        check("dsh persona mandates landing gate", "operator approval" in cordis)
+        check("dsh persona keeps {{model}} placeholder", "{{model}}" in cordis)
+        check("dsh preset bundles tenx skills",
+              (preset_dir / "skills" / "tenx-process" / "SKILL.md").is_file())
+        check("dsh alias resolves to deepseek-harness",
+              "tenx" in tenx("hook", "detect", "--json", cwd=dshproj).stdout)
         # rules.yaml overrides (README-documented formats)
         (proj / ".tenx" / "rules.yaml").write_text(
             "disable:\n  - log-quiet\n"

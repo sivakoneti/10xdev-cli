@@ -41,10 +41,15 @@ touching `src/tenx/`.
       activity.py    append-only JSONL activity log + throttled session entries
       execbrief.py   `tenx exec` autonomous execution brief builder
       adapters.py    data-driven adapter registry (~29 agent harnesses:
-                     instruction files, hook kind, binary detection)
+                     instruction files, hook kind, binary detection) +
+                     agent aliases (dsh->deepseek-harness, agy, prime)
       hooks.py       hook/skill install engines: claude settings.json hook,
-                     managed md blocks (tenx:begin/end), cursor/cline/kiro
-                     managed files, bootstrap snippet
+                     managed md blocks (tenx:begin/end, hardened HARD-RULES
+                     mandate), cursor/cline/kiro managed files, bootstrap
+                     snippet, DSH agent-preset generator (persona-mandated
+                     tenx loop), and the git pre-commit gate (runs
+                     `tenx validate`, blocks commits on errors — the
+                     universal harness-agnostic backstop)
       skills.py      skill installation (.claude/skills/<name>/SKILL.md layout)
       scan.py        `tenx scan`: stack/test/CI/agent-file census of the code
                      repo; --write upserts a codebase-map DOC

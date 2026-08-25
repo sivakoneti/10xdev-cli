@@ -107,26 +107,44 @@ tenx hook install --agent hermes     # or any single adapter id
 tenx hook install --agent all        # every file-based target
 ```
 
-Injection tiers:
+Injection tiers (defense in depth):
 
-1. **Forced hook** — the harness runs a command at session start and
-   injects stdout: Claude Code (`.claude/settings.json` SessionStart).
-   Any harness with an equivalent hook mechanism just needs to run
+1. **Persona / runtime injection** — the strongest tier: the mandate is
+   loaded by the harness into the agent's identity, not read from a file.
+   - DeepSeek Harness (dsh): `tenx hook install --agent dsh` emits a
+     mountable `tenx` agent preset whose persona hard-mandates the loop
+     (`tenx validate` MUST pass before work is done; no archive/merge
+     without operator sign-off). Mount it from `~/.dsh/.agent-presets/tenx`.
+   - Prime Agent injects `AGENTS.md` into its system prompt; omp has a
+     forced `--append-system-prompt "$(tenx hook bootstrap)"` tier.
+2. **Forced session-start hook** — the harness runs a command at session
+   start and injects stdout: Claude Code (`.claude/settings.json`
+   SessionStart). Any harness with an equivalent hook just needs to run
    `tenx context --mode agent`.
-2. **Auto-loaded instruction files** — the adapter catalog covers:
+3. **Auto-loaded instruction files** — the adapter catalog covers:
    claude, codex, opencode, cursor, gemini, cline, windsurf, copilot,
    continue, aider, amp, qoder, qwen, grok, deepseek, deepseek-harness
    (dsh), prime-agent, omp (Oh My Pie), antigravity (agy), devin,
-   hermes, kimi, kiro, kilo, vibe, vela, trae, pi, generic.
-3. **Universal bootstrap** — for anything else: paste the output of
+   hermes, kimi, kiro, kilo, vibe, vela, trae, pi, generic. The managed
+   block states the loop as **Hard rules**, not just context.
+4. **Universal bootstrap** — for anything else: paste the output of
    `tenx hook bootstrap` into the harness's system prompt / custom
    instructions. That block is the entire integration; it only assumes
    the agent can run shell commands. Even with nothing installed, an
    agent can always run `tenx context --mode agent` on demand.
-4. **Native MCP tools** — harnesses with Model Context Protocol support
+5. **Native MCP tools** — harnesses with Model Context Protocol support
    (Claude Code, Cursor, Cline, Windsurf, Copilot, ...) can call tenx
    as structured tools instead of shell commands. See
    [MCP server](#native-tools-via-mcp) below.
+
+**The universal backstop — git pre-commit gate.** Instruction files and
+personas raise *voluntary* compliance, but a confused or pressured model can
+still skip tenx. The one layer no harness can bypass is git: every agent must
+commit through it. `tenx hook install --git` (and `tenx init` in a git repo)
+installs a pre-commit hook that runs `tenx validate` and **rejects the commit
+while it reports errors**. That turns "the agent silently skipped tenx" into
+"the commit is blocked," on every harness identically. Bypass only with
+`git commit --no-verify` and explicit operator approval.
 
 ### Alternative: standalone PM repo (the 10X layout)
 
@@ -235,7 +253,9 @@ tenx sync push|pull [--spec SPC-xxx] [--dry-run] [--json]
 tenx mcp [serve|install]         # MCP server; install writes .mcp.json
 tenx skills list|install [--target DIR]
 tenx hook [--mode agent] [--budget N] [--no-log]  # emit the packet; logs a throttled session entry
-tenx hook install --agent <id|all|detected>  # see `tenx hook detect`
+tenx hook install --agent <id|all|detected> [--git]  # see `tenx hook detect`
+tenx hook install --git        # install the pre-commit gate (tenx validate)
+tenx hook install --agent dsh  # emit the mountable DSH agent preset
 tenx doctor                      # health check
 tenx update [--check] [--json]   # self-update; --check reports only
 tenx changelog [show]            # print the Keep-a-Changelog CHANGELOG.md
