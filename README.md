@@ -200,8 +200,9 @@ tenx status                      # alias for the operator dashboard
 tenx new <epic|spec|convention|doc> "Title" [--epic EPC-001] [--priority P0]
 tenx show <ID> [--json]          # full artifact, metadata + body
 tenx list [type] [--json]
-tenx set <ID> status in_review   # update metadata (status/owner/epic/title/tags/priority)
+tenx set <ID> status in_review   # update metadata (status/owner/epic/title/tags/priority/evidence)
 tenx set <ID> priority P0        # business priority tier: P0/P1/P2
+tenx set <ID> status complete [--force]  # gated: needs clean validate + done tickets + linked evidence
 tenx ticket SPC-001 SPC-001-T2 done
 tenx validate [--fix] [--json]   # lint the SDLC; --fix rebuilds the convention index
 tenx validate --list-rules [--json]  # print the rule catalog (no linting)
@@ -209,6 +210,7 @@ tenx log "implemented webhook handler" --ref SPC-001 --type progress
 tenx history [--limit 20] [--json]
 tenx next [--json]               # prioritized work queue (the self-improving loop)
 tenx watchdog [--json] [--window 7] [--top 5]  # top things needing attention + are they handled
+tenx triage [--json] [--window 7] [--top 5]    # what needs a human now: act/watch/escalation
 tenx review [--json]             # what awaits review (in_review specs/tickets)
 tenx archive EPC-xxx [--yes]     # retire a finished epic and its specs
 tenx scan [--json] [--write]     # map the codebase; --write stores it as a DOC
@@ -340,11 +342,24 @@ open blockers, work waiting in review — and cross-references recent activity
 to say whether each is **being handled** or **unattended**. Run it after
 `tenx context` to spot work that has gone quiet.
 
+`tenx triage` is the escalation layer on top of watchdog: it classifies the
+current attention items into **act now** (critical, or high and unattended),
+**watch** (being handled or awaiting review), and **healthy**, then picks the
+single most important thing needing a human decision. The bundled
+`tenx-triage` skill wraps this as a read-only **Triage Officer** agent role you
+can schedule to report what needs you right now.
+
 Install the bundled `tenx-process` skill (`tenx skills install`) and agents
 run this loop autonomously: brief → pick → load context → work → write back →
 validate. The bundled `tenx-review` skill adds the **landing discipline**:
 evidence before done, a bounded 2-cycle fix loop, and a human gate on the
 final merge.
+
+The **evidence gate is enforced by the CLI**: `tenx set <ID> status complete`
+for a spec/epic is blocked unless `tenx validate` is clean for that artifact,
+its tickets are done, and evidence is linked (a `--ref` log entry or an
+`evidence:` field). `--force` is the explicit human override, and
+`evidence_gate: off` in `.tenx/config.yaml` disables it per project.
 
 ## Validation rules
 

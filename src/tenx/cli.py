@@ -16,6 +16,7 @@ Command map (mirrors the 10X harness from the David Ondrej podcast):
   tenx history                     show recent activity
   tenx next                        most important thing to work on next
   tenx watchdog                    top things needing attention + are they handled
+  tenx triage                      what needs a human now: act/watch/escalation
   tenx skills list|install         bundled skills per artifact type
   tenx hook [--mode agent]         emit the session-start packet
   tenx hook install [--agent X]    wire packet into claude/codex/opencode/gemini
@@ -53,6 +54,7 @@ from .adapters import adapter_ids, detect_adapters, get_adapter
 from .hooks import bootstrap_snippet, install as install_hook
 from .nextup import compute_next, render_next
 from .watchdog import compute_watchdog, render_watchdog
+from .triage import compute_triage, render_triage
 from .rules import RULE_CATALOG, list_rules_text, rebuild_convention_index, validate
 from .skills import install_skills, list_skills
 from .templates import BODY_TEMPLATES, CODE_ROOT_COMMENT, CONFIG_TEMPLATE, HARNESS_README
@@ -608,7 +610,8 @@ def cmd_list(args: argparse.Namespace) -> int:
 
 
 SETTABLE_FIELDS = {"status": STATUSES, "owner": None, "epic": None,
-                   "title": None, "tags": None, "priority": PRIORITIES}
+                   "title": None, "tags": None, "priority": PRIORITIES,
+                   "evidence": None}
 
 
 def cmd_set(args: argparse.Namespace) -> int:
@@ -638,6 +641,23 @@ def cmd_set(args: argparse.Namespace) -> int:
             return 2
     if field == "tags":
         value = [t.strip() for t in args.value.split(",") if t.strip()]
+    # ---- enforced evidence gate (SPC-015) ------------------------------
+    if (field == "status" and value == "complete"
+            and art.type in ("spec", "epic") and art.status != "complete"):
+        from .gate import check_evidence_gate, gate_enabled
+        forced = bool(getattr(args, "force", False))
+        if gate_enabled(harness) and not forced:
+            rs = validate(root, harness)
+            ok, reasons = check_evidence_gate(root, harness, art, rs)
+            if not ok:
+                print(f"tenx: evidence gate blocked {art.id} -> complete:",
+                      file=sys.stderr)
+                for r in reasons:
+                    print(f"  - {r}", file=sys.stderr)
+                return 2
+        elif forced:
+            print(f"tenx: --force used — evidence gate bypassed for "
+                  f"{art.id} (human override).", file=sys.stderr)
     update_meta(art, {field: value})
     print(f"{art.id}: {field} = {value}")
     return 0
@@ -775,6 +795,19 @@ def cmd_watchdog(args: argparse.Namespace) -> int:
                          indent=2, ensure_ascii=False))
     else:
         sys.stdout.write(render_watchdog(root, window_days=window, top=top))
+    return 0
+
+
+def cmd_triage(args: argparse.Namespace) -> int:
+    root = _root_or_die(args.root)
+    _require_init(root)
+    window = float(getattr(args, "window", 7) or 7)
+    top = int(getattr(args, "top", 5) or 5)
+    if args.json:
+        print(json.dumps(compute_triage(root, window_days=window, top=top),
+                         indent=2, ensure_ascii=False))
+    else:
+        sys.stdout.write(render_triage(root, window_days=window, top=top))
     return 0
 
 
@@ -1024,6 +1057,9 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("id")
     sp.add_argument("field", choices=sorted(SETTABLE_FIELDS))
     sp.add_argument("value")
+    sp.add_argument("--force", action="store_true",
+                    help="bypass the evidence gate on `status complete` "
+                         "(human override)")
     sp.set_defaults(func=cmd_set)
 
     sp = sub.add_parser("ticket", help="move a spec ticket")
@@ -1065,6 +1101,15 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--top", type=int, default=5,
                     help="max items to show (default 5)")
     sp.set_defaults(func=cmd_watchdog)
+
+    sp = sub.add_parser("triage",
+                        help="what needs a human now: act/watch/escalation")
+    sp.add_argument("--json", action="store_true")
+    sp.add_argument("--window", type=float, default=7,
+                    help="days that count as 'recent' activity (default 7)")
+    sp.add_argument("--top", type=int, default=5,
+                    help="max items to consider (default 5)")
+    sp.set_defaults(func=cmd_triage)
 
     sp = sub.add_parser("exec",
                         help="print an autonomous execution brief for a spec")

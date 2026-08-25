@@ -87,7 +87,7 @@ def main() -> int:
         tenx("ticket", "SPC-001", "SPC-001-T1", "done", cwd=proj)
         tenx("set", "SPC-001", "status", "in_progress", cwd=proj)
         tenx("validate", cwd=proj)  # clean
-        tenx("set", "SPC-001", "status", "complete", cwd=proj)
+        tenx("set", "SPC-001", "status", "complete", "--force", cwd=proj)
         out = tenx("validate", "--json", cwd=proj, expect_rc=0).stdout
         warns = json.loads(out)["warnings"]
         check("derived-status-drift flagged",
@@ -359,7 +359,7 @@ def main() -> int:
         check("mcp initialize negotiates",
               resp[1]["result"]["serverInfo"]["name"] == "tenx")
         tool_names = {t["name"] for t in resp[2]["result"]["tools"]}
-        check("mcp lists 11 tools", len(tool_names) == 11,
+        check("mcp lists 12 tools", len(tool_names) == 12,
               str(tool_names))
         check("mcp exposes tenx_context", "tenx_context" in tool_names)
         check("mcp exposes tenx_watchdog", "tenx_watchdog" in tool_names)
@@ -462,6 +462,60 @@ def main() -> int:
         check("rule config-code-root fires as error",
               any(e["rule"] == "config-code-root" for e in d["errors"]))
         shutil.rmtree(hyg, ignore_errors=True)
+
+        # ---- SPC-015 enforced evidence gate ----
+        gateproj = Path(tempfile.mkdtemp(prefix="tenx-gate-"))
+        tenx("init", "--name", "gate", cwd=gateproj)
+        tenx("new", "epic", "Gate epic", cwd=gateproj)
+        tenx("new", "spec", "Gate spec", "--epic", "EPC-001", cwd=gateproj)
+        # blocked: no evidence, no tickets
+        r = tenx("set", "SPC-001", "status", "complete", cwd=gateproj,
+                 expect_rc=2)
+        check("gate blocks complete without evidence", r.returncode == 2)
+        check("gate prints blocked message",
+              "evidence gate blocked" in r.stderr, r.stderr)
+        # still blocked with an open ticket
+        tenx("ticket", "SPC-001", "SPC-001-T1", "--title", "t", "todo",
+             cwd=gateproj)
+        r = tenx("set", "SPC-001", "status", "complete", cwd=gateproj,
+                 expect_rc=2)
+        check("gate blocks with open ticket",
+              r.returncode == 2 and "not done" in r.stderr, r.stderr)
+        # passes once ticket done + evidence logged
+        tenx("ticket", "SPC-001", "SPC-001-T1", "done", cwd=gateproj)
+        tenx("log", "did the gate work", "--ref", "SPC-001", cwd=gateproj)
+        tenx("set", "SPC-001", "status", "complete", cwd=gateproj)
+        meta = json.loads(tenx("show", "SPC-001", "--json",
+                               cwd=gateproj).stdout)["meta"]
+        check("gate passes with logged evidence",
+              meta.get("status") == "complete", str(meta.get("status")))
+        # --force bypass on a fresh spec
+        tenx("new", "spec", "Force spec", "--epic", "EPC-001", cwd=gateproj)
+        r = tenx("set", "SPC-002", "status", "complete", "--force",
+                 cwd=gateproj)
+        check("gate --force bypasses",
+              r.returncode == 0 and "--force used" in r.stderr, r.stderr)
+        # evidence field path
+        tenx("new", "spec", "Ev spec", "--epic", "EPC-001", cwd=gateproj)
+        tenx("set", "SPC-003", "evidence", "smoke green 2026-08-25",
+             cwd=gateproj)
+        tenx("set", "SPC-003", "status", "complete", cwd=gateproj)
+        meta = json.loads(tenx("show", "SPC-003", "--json",
+                               cwd=gateproj).stdout)["meta"]
+        check("gate passes via evidence field",
+              meta.get("status") == "complete", str(meta.get("status")))
+        # config off disables the gate
+        cfg = gateproj / ".tenx/config.yaml"
+        cfg.write_text((cfg.read_text() if cfg.exists() else "")
+                       + "\nevidence_gate: off\n")
+        tenx("new", "spec", "Off spec", "--epic", "EPC-001", cwd=gateproj)
+        tenx("set", "SPC-004", "status", "complete", cwd=gateproj)
+        meta = json.loads(tenx("show", "SPC-004", "--json",
+                               cwd=gateproj).stdout)["meta"]
+        check("gate disabled via config",
+              meta.get("status") == "complete", str(meta.get("status")))
+        shutil.rmtree(gateproj, ignore_errors=True)
+
         # rule catalog: --list-rules works anywhere, covers every rule
         out = tenx("validate", "--list-rules", cwd=tmp).stdout
         check("list-rules prints catalog",
@@ -681,6 +735,39 @@ def main() -> int:
         from tenx.mcp import _tooldefs
         names = {t["name"] for t in _tooldefs()}
         check("mcp registers tenx_watchdog", "tenx_watchdog" in names)
+
+        # ---- SPC-016 triage agent role + command ----
+        r = tenx("triage", cwd=scanproj)
+        check("triage runs clean", r.returncode == 0)
+        check("triage no traceback", "Traceback" not in r.stderr)
+        check("triage renders act/watch/escalate sections",
+              "Act now" in r.stdout and "Watch" in r.stdout
+              and "Escalate to human" in r.stdout, r.stdout)
+        tj = json.loads(tenx("triage", "--json", cwd=scanproj).stdout)
+        check("triage --json shape",
+              all(k in tj for k in ("act_now", "watch", "escalation",
+                                    "healthy_in_progress", "counts")))
+        # a blocked, never-touched spec escalates into act_now
+        tenx("set", p0_id, "status", "blocked", cwd=scanproj)
+        tj = json.loads(tenx("triage", "--json", cwd=scanproj).stdout)
+        check("triage escalates blocked unattended spec",
+              any(it.get("ref") == p0_id for it in tj["act_now"]),
+              str(tj["act_now"]))
+        check("triage picks a top escalation",
+              tj["escalation"] is not None
+              and tj["escalation"].get("ref") == p0_id,
+              str(tj["escalation"]))
+        tenx("set", p0_id, "status", "draft", cwd=scanproj)
+        check("mcp registers tenx_triage", "tenx_triage" in names)
+        # the agent-role skill installs and describes the loop
+        tri = (scanproj / ".claude/skills/tenx-triage/SKILL.md")
+        check("tenx-triage skill installed", tri.is_file())
+        if tri.is_file():
+            tritxt = tri.read_text()
+            check("triage skill teaches the loop",
+                  "tenx triage" in tritxt and "Escalate" in tritxt)
+            check("triage skill is read-only",
+                  "Do NOT mutate" in tritxt or "never mutates" in tritxt.lower())
 
         # ---- EPC-007 landing discipline in skills ----
         wrev2 = (scanproj / ".claude/skills/tenx-review/SKILL.md"

@@ -333,9 +333,11 @@ description: Review pass for tenx artifacts and finished tickets. Use when a spe
    Validation section is the definition of done).
 4. Check conventions compliance on the changed code (read
    `.tenx/conventions/INDEX.md` and every entry).
-5. If good: `tenx set <ID> status complete` and `tenx log "review passed"
-   --ref <ID>`. If not: move blocking tickets back to in_progress with a log
-   entry saying why.
+5. If good: `tenx log "review passed" --ref <ID>` first (that log entry is
+   the evidence), then `tenx set <ID> status complete`. The CLI now enforces
+   this: it blocks `status complete` unless validation is clean, tickets are
+   done, and evidence is linked. If not good: move blocking tickets back to
+   in_progress with a log entry saying why.
 6. When an epic and all its specs are complete, `tenx archive <EPC-ID>` moves
    it out of the active queue (blameless — archive is a record, not a grade).
 
@@ -345,14 +347,50 @@ description: Review pass for tenx artifacts and finished tickets. Use when a spe
   Allow at most **2 fix cycles** for the same spec/ticket. If it still fails
   after the 2nd bounce, STOP and escalate to the human with the concrete
   failure — do not loop forever.
-- **Evidence gate.** Never mark a ticket or spec complete without evidence:
-  `tenx validate` passes AND the spec's Validation section is satisfied
-  (tests run, commands shown, output quoted). "It should work" is not
-  evidence.
+- **Evidence gate (CLI-enforced).** Never mark a spec/epic complete without
+  evidence: `tenx validate` passes AND the spec's Validation section is
+  satisfied (tests run, commands shown, output quoted). "It should work" is
+  not evidence. The CLI blocks `tenx set <ID> status complete` until evidence
+  is linked (a `--ref` log entry or an `evidence:` field); `--force` is the
+  explicit human override.
 - **Human gate for landing.** Merging/archiving is the human's call. Agents
   prepare the evidence and recommend land-or-bounce; the human approves the
   final merge. Do not self-merge past the human.
 - **Verify like a user.** Where practical, confirm the change the way a user
   would (run the command, open the flow), not just that the code compiles.
+""",
+    "tenx-triage": """---
+name: tenx-triage
+description: Triage Officer agent role. Run periodically or on demand to rank what needs attention across the project and hand the human the single most important escalation. Read-only; never mutates state.
+---
+
+# Triage Officer (agent role)
+
+You are the Triage Officer. Your job is to answer one question for the human
+overseeing this project: "what needs ME right now?" You do not fix anything;
+you rank, classify, and escalate.
+
+## Loop
+
+1. `tenx update --check` - if a newer tenx exists, tell the human once. Never
+   block on this; offline is fine.
+2. `tenx triage` - read the act-now / watch / healthy breakdown and the
+   suggested escalation.
+3. For each act-now item, decide in one line whether it needs:
+   - a human decision (blocked, unattended, or a landing gate), or
+   - an agent to be dispatched to it (then name the spec/ticket).
+4. Report to the human in this exact shape:
+   - **Escalate:** the single most important thing needing a human decision.
+   - **Act now:** the remaining critical/unattended items, one line each.
+   - **Watch:** items being handled or waiting review, one line each.
+   - **Healthy:** how many in-progress specs have recent activity.
+5. Do NOT mutate state. Do not mark anything complete, merge, or archive.
+   Recommend; the human (or the review skill) lands.
+
+## Rules
+
+- Prefer `tenx triage --json` when another program consumes the output.
+- If there is nothing to escalate, say so plainly - silence is a valid report.
+- Keep the report short. One line per item. No prose padding.
 """,
 }

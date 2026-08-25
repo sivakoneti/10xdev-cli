@@ -85,6 +85,19 @@ def _tooldefs() -> list[dict[str, Any]]:
                      "description": "max items to show (default 5)"}}},
          "handler": mk(C.cmd_watchdog, {"json": False, "window": 7,
                                         "top": 5})},
+        {"name": "tenx_triage",
+         "description": "Escalation digest for a human: classifies the "
+                        "current attention items into act-now / watch / "
+                        "healthy and picks the single most important "
+                        "thing needing a human decision. Read-only.",
+         "inputSchema": {"type": "object", "properties": {
+             "window": {"type": "number",
+                        "description": "days that count as recent "
+                                       "activity (default 7)"},
+             "top": {"type": "integer",
+                     "description": "max items to consider (default 5)"}}},
+         "handler": mk(C.cmd_triage, {"json": False, "window": 7,
+                                      "top": 5})},
         {"name": "tenx_status",
          "description": "Operator dashboard: artifact counts, statuses, "
                         "recent activity.",
