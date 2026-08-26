@@ -140,8 +140,9 @@ CAPABILITIES: list[dict[str, str]] = [
              "--list-rules prints the rule catalog.",
      "when": "Before ending any session and before every commit (the "
              "pre-commit gate runs it); fix errors, never leave new ones."},
-    {"name": "converge", "surface": "cli", "group": "quality",
-     "usage": "tenx converge <SPC-ID> [--json] [--append]",
+    {"name": "converge", "surface": "both", "group": "quality",
+     "usage": "tenx converge <SPC-ID> [--json] [--append] | MCP "
+              "tenx_converge(spec_id, append?)",
      "what": "Deterministic spec-completion convergence: maps FR-### "
              "requirements to tickets, reports satisfied/open, and with "
              "--append adds a todo ticket per uncovered requirement.",

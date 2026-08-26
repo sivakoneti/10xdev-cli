@@ -83,6 +83,16 @@ def _tooldefs() -> list[dict[str, Any]]:
             return _call_cli(func, lock=(func in mutating), **kw)
         return handler
 
+    def _converge_handler(args: dict[str, Any]) -> tuple[str, int]:
+        # SPC-026: lock depends on the call, not the tool — the report is
+        # read-only, append writes tickets. MCP is a machine interface, so
+        # the answer is always JSON; rc keeps CLI semantics (isError is
+        # set on nonzero rc but the report is still delivered).
+        kw = {"json": True, "append": False,
+              **{k: v for k, v in args.items() if v is not None}}
+        return _call_cli(C.cmd_converge, lock=bool(args.get("append")),
+                         **kw)
+
     S = {"type": "string"}
     B = {"type": "boolean"}
     return [
@@ -221,6 +231,22 @@ def _tooldefs() -> list[dict[str, Any]]:
                         "to learn what tenx can do and when to use it.",
          "inputSchema": {"type": "object", "properties": {}},
          "handler": mk(C.cmd_capabilities, {"json": False})},
+        {"name": "tenx_converge",
+         "description": "Spec convergence check (SPC-026): deterministic "
+                        "FR-### vs tickets report for one spec, as JSON. "
+                        "rc 0 = CONVERGED, 1 = NOT CONVERGED (report "
+                        "still delivered), 2 = bad spec id. Run before "
+                        "marking a spec complete. With append=true, "
+                        "creates missing tickets (append-only, takes the "
+                        "harness lock).",
+         "inputSchema": {"type": "object", "properties": {
+             "spec_id": {**S, "description": "spec id, e.g. SPC-001"},
+             "append": {**B,
+                        "description": "create todo tickets for "
+                                       "uncovered FR-### (default "
+                                       "false)"}},
+             "required": ["spec_id"]},
+         "handler": _converge_handler},
     ]
 
 

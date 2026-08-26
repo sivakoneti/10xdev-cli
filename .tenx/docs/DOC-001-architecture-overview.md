@@ -64,7 +64,7 @@ touching `src/tenx/`.
       sync.py        `tenx sync push|pull`: spec tickets <-> GitHub Issues
                      ([SPC-xxx-Tn] markers, label, token chain incl.
                      ~/.git-credentials)
-      mcp.py         `tenx mcp`: stdio MCP JSON-RPC server exposing 14 tools;
+      mcp.py         `tenx mcp`: stdio MCP JSON-RPC server exposing 15 tools;
                      mutating tools take the same harness lock as the CLI;
                      `tenx mcp install` writes managed .mcp.json
       capabilities.py capability catalog (every command/tool + when-to-use)

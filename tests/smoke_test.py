@@ -536,9 +536,10 @@ def main() -> int:
         check("mcp initialize negotiates",
               resp[1]["result"]["serverInfo"]["name"] == "tenx")
         tool_names = {t["name"] for t in resp[2]["result"]["tools"]}
-        check("mcp lists 14 tools", len(tool_names) == 14,
+        check("mcp lists 15 tools", len(tool_names) == 15,
               str(tool_names))
         check("mcp exposes tenx_context", "tenx_context" in tool_names)
+        check("mcp exposes tenx_converge", "tenx_converge" in tool_names)
         check("mcp exposes tenx_watchdog", "tenx_watchdog" in tool_names)
         check("mcp exposes tenx_capabilities",
               "tenx_capabilities" in tool_names)
@@ -1522,6 +1523,70 @@ def main() -> int:
             os.environ.pop("TENX_LOCK_TIMEOUT", None)
             holder.wait(timeout=10)
         shutil.rmtree(lockproj, ignore_errors=True)
+
+        # SPC-026: tenx_converge MCP tool — report, append, lock-on-append
+        from tenx.mcp import _tooldefs as _td3
+        convproj = Path(tempfile.mkdtemp(prefix="tenx-conv-"))
+        tenx("init", "--name", "convproj", cwd=convproj)
+        tenx("new", "epic", "Conv epic", cwd=convproj)
+        tenx("new", "spec", "Conv spec", "--epic", "EPC-001", cwd=convproj)
+        cspec = next((convproj / ".tenx/specs").glob("SPC-001-*.md"))
+        ctxt = cspec.read_text()
+        ctxt = ctxt.replace(
+            "- FR-001: The system MUST ...\n",
+            "- FR-001: The system MUST greet.\n")
+        ctxt = ctxt.replace(
+            "- FR-002: The system MUST ... "
+            "[NEEDS CLARIFICATION: example question]\n",
+            "- FR-002: The system MUST farewell.\n")
+        fm_end = ctxt.index("---", 4)
+        ctxt = (ctxt[:fm_end]
+                + "tickets:\n  - id: SPC-001-T1\n"
+                + "    title: \"[FR-001] greet\"\n    status: todo\n"
+                + ctxt[fm_end:])
+        cspec.write_text(ctxt)
+        conv_tool = next(t for t in _td3() if t["name"] == "tenx_converge")
+        ctext, crc = conv_tool["handler"](
+            {"root": str(convproj), "spec_id": "SPC-001"})
+        crep = json.loads(ctext)
+        check("MCP converge registered and reports JSON",
+              crc == 1 and crep["verdict"] == "NOT CONVERGED",
+              f"rc={crc} {ctext[:120]}")
+        check("MCP converge maps FRs to tagged tickets",
+              crep["requirements"][0]["tickets"] == ["SPC-001-T1"]
+              and crep["requirements"][1]["tickets"] == [],
+              str(crep["requirements"]))
+        # append creates the missing ticket (append-only)
+        atext, arc = conv_tool["handler"](
+            {"root": str(convproj), "spec_id": "SPC-001", "append": True})
+        arep = json.loads(atext)
+        check("MCP converge append creates uncovered-FR ticket",
+              arc == 1 and arep["appended_tickets"] == ["SPC-001-T2"]
+              and "[FR-002]" in cspec.read_text(),
+              f"rc={arc} {atext[:120]}")
+        # append takes the harness lock; report does not
+        cholder_src = (
+            "import sys, time\n"
+            f"sys.path.insert(0, {str(Path(__file__).resolve().parent.parent / 'src')!r})\n"
+            "from pathlib import Path\n"
+            "from tenx.locking import harness_lock\n"
+            f"with harness_lock(Path({str(convproj)!r})): time.sleep(3)\n")
+        cholder = subprocess.Popen([sys.executable, "-c", cholder_src])
+        _time.sleep(0.8)
+        os.environ["TENX_LOCK_TIMEOUT"] = "1"
+        try:
+            _t, lrc = conv_tool["handler"](
+                {"root": str(convproj), "spec_id": "SPC-001",
+                 "append": True})
+            check("MCP converge append honors the harness lock", lrc == 2,
+                  f"rc={lrc}")
+            _t, rrc = conv_tool["handler"](
+                {"root": str(convproj), "spec_id": "SPC-001"})
+            check("MCP converge report is lock-free", rrc == 1, f"rc={rrc}")
+        finally:
+            os.environ.pop("TENX_LOCK_TIMEOUT", None)
+            cholder.wait(timeout=10)
+        shutil.rmtree(convproj, ignore_errors=True)
 
         # T12: yamlite fallback hardening
         from tenx import yamlite as _yl

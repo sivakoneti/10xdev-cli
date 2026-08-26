@@ -325,12 +325,13 @@ tenx mcp install               # writes managed .mcp.json (Claude Code)
 #   command: tenx   args: ["mcp"]
 ```
 
-Exposed tools (14): `tenx_context`, `tenx_next`, `tenx_watchdog`,
+Exposed tools (15): `tenx_context`, `tenx_next`, `tenx_watchdog`,
 `tenx_triage`, `tenx_status`, `tenx_show`, `tenx_list`, `tenx_ticket`,
 `tenx_log`, `tenx_validate`, `tenx_scan`, `tenx_exec`, `tenx_changelog`,
-`tenx_capabilities`. Each maps onto the same code path as the CLI
-command, so output and exit semantics match exactly; mutating tools
-also take the same per-project advisory lock as the CLI. The server is
+`tenx_capabilities`, `tenx_converge`. Each maps onto the same code path
+as the CLI command, so output and exit semantics match exactly;
+mutating tools also take the same per-project advisory lock as the CLI
+(`tenx_converge` locks only when `append` is set). The server is
 fault-isolated: a bad tool call or malformed line returns an error
 result and keeps serving.
 
