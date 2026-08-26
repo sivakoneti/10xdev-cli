@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- GitHub Actions CI: smoke suite runs in both modes (module + pip-installed) plus tenx validate on every push/PR across Python 3.10/3.12/3.13 (SPC-024)
+
+### Changed
+- the tenx repo now runs commit_gate: on — staged code without activity-log write-back blocks the commit (new projects keep the warn default) (SPC-024)
+
 ## [v0.19.0] - 2026-08-26
 
 ### Added

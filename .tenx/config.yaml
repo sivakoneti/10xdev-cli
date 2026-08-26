@@ -7,3 +7,7 @@ description: "Meta-harness CLI: context-as-code for AI coding agents (the 10X me
 rules:
   stale_days: 14
   quiet_days: 7
+# Commit-time write-back gate (SPC-024-T2): this repo eats its own dogfood,
+# so staged code with no activity-log write-back BLOCKS the commit.
+# New projects default to warn; strict mode is opt-in per repo.
+commit_gate: on

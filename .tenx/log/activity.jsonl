@@ -127,3 +127,13 @@
 {"ts": "2026-08-26T08:54:32+00:00", "type": "progress", "actor": "agent", "message": "cut v0.19.0: version bump (pyproject + __init__), changelog release stamped [v0.19.0] with all SPC-023 entries, fresh [Unreleased] reopened", "ref": "SPC-023"}
 {"ts": "2026-08-26T09:00:44+00:00", "type": "progress", "actor": "agent", "message": "github sync push to sivakoneti/10xdev-cli: 20 created, 0 updated"}
 {"ts": "2026-08-26T09:11:14+00:00", "type": "progress", "actor": "agent", "message": "released v0.19.0: changelog stamped, pyproject/__init__ bumped, commit 0ab145a tagged v0.19.0, pushed master+tag to origin, GitHub Release created (update channel now serves 0.19.0 via release), tenx sync push created 20 SPC-023 ticket issues (88 in sync)", "ref": "SPC-023"}
+{"ts": "2026-08-26T10:40:09+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-024-T1: created as todo", "ref": "SPC-024"}
+{"ts": "2026-08-26T10:40:09+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-024-T2: created as todo", "ref": "SPC-024"}
+{"ts": "2026-08-26T10:40:09+00:00", "type": "progress", "actor": "agent", "message": "opened EPC-014/SPC-024 for rollout readiness: CI for the harness itself + strict commit gate for this repo", "ref": "SPC-024"}
+{"ts": "2026-08-26T10:40:13+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-024-T1: todo -> in_progress", "ref": "SPC-024"}
+{"ts": "2026-08-26T10:40:48+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-024-T1: in_progress -> done", "ref": "SPC-024"}
+{"ts": "2026-08-26T10:40:48+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-024-T2: todo -> in_progress", "ref": "SPC-024"}
+{"ts": "2026-08-26T10:41:55+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-024-T2: in_progress -> done", "ref": "SPC-024"}
+{"ts": "2026-08-26T10:41:55+00:00", "type": "progress", "actor": "agent", "message": "T1+T2 done: CI workflow added (.github/workflows/ci.yml; full sequence verified locally incl. plain pip install in a throwaway venv) and commit_gate flipped to on for this repo. Smoke green both modes.", "ref": "SPC-024"}
+{"ts": "2026-08-26T10:41:55+00:00", "type": "blocker", "actor": "agent", "message": "evidence gate BLOCKED EPC-014 -> complete: no evidence linked - log work with `tenx log ... --ref EPC-014`, or attach it with `tenx set EPC-014 evidence <link/command>`, or re-run with --force (human override)", "ref": "EPC-014"}
+{"ts": "2026-08-26T10:41:59+00:00", "type": "progress", "actor": "agent", "message": "EPC-014 complete: SPC-024 shipped CI (smoke both modes + validate on push/PR, py 3.10/3.12/3.13) and strict commit_gate for this repo", "ref": "EPC-014"}
