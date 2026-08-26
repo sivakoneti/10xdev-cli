@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.18.0] - 2026-08-26
+
 ### Added
 - DSH agent preset: rename to 'tenx — Meta-Harness Engineering Agent' and rewrite the description to lead with tenx's real purpose (context-as-code meta-harness) instead of describing it as a coding agent.
 - Added tenx capabilities command and tenx_capabilities MCP tool: curated capability catalog with when-to-use guidance, advertised in the context packet (SPC-022)

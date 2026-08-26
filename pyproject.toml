@@ -1,6 +1,6 @@
 [project]
 name = "tenx"
-version = "0.17.0"
+version = "0.18.0"
 description = "Meta-harness CLI: context-as-code for AI coding agents. Structured markdown artifacts, SDLC linting, session-start context packets. Works on any project."
 readme = "README.md"
 requires-python = ">=3.10"
