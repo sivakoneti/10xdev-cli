@@ -21,6 +21,20 @@ from pathlib import Path
 FAILURES: list[str] = []
 USE_MODULE = "--module" in sys.argv
 
+if USE_MODULE:
+    # Hermetic module mode: the git pre-commit hook needs a `tenx`
+    # executable, but nothing is installed in this mode (e.g. fresh CI
+    # runners). Provide a PATH shim that runs the source tree, so the
+    # hook works without an install and module mode tests pure source.
+    _shim_dir = Path(tempfile.mkdtemp(prefix="tenx-shim-"))
+    _src_dir = Path(__file__).resolve().parent.parent / "src"
+    _shim = _shim_dir / "tenx"
+    _shim.write_text(
+        "#!/bin/sh\n"
+        f"exec env PYTHONPATH={_src_dir} python3 -m tenx \"$@\"\n")
+    _shim.chmod(0o755)
+    os.environ["PATH"] = f"{_shim_dir}{os.pathsep}{os.environ.get('PATH', '')}"
+
 
 def tenx(*args: str, cwd: Path, expect_rc: int = 0) -> subprocess.CompletedProcess:
     cmd = [sys.executable, "-m", "tenx", *args] if USE_MODULE else ["tenx", *args]

@@ -2,7 +2,7 @@
 id: SPC-024
 type: spec
 title: CI workflow + commit_gate on for the tenx repo
-status: complete
+status: in_progress
 epic: EPC-014
 created: 2026-08-26
 updated: 2026-08-26
