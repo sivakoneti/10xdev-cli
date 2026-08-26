@@ -171,6 +171,9 @@ def scan_tree(project_root: Path, code_root: Path) -> dict[str, Any]:
         "file_count_scanned": file_count,
         "top_level_census": dict(sorted(census.items(),
                                         key=lambda kv: -kv[1])[:15]),
+        # SPC-023-T17: let renderers say when the census was truncated,
+        # so a missing entry reads as "not shown", not "deleted".
+        "top_level_entries": len(census),
     }
 
 
@@ -198,8 +201,13 @@ def _render_body(result: dict[str, Any]) -> str:
     lines += [f"- `{m}`" for m in result["markers"]] or ["- none"]
     lines += ["", "## Entry-point hints", ""]
     lines += [f"- `{e}`" for e in result["entry_hints"]] or ["- none"]
-    lines += ["", "## Top-level census", ""]
-    for name, n in result["top_level_census"].items():
+    census = result["top_level_census"]
+    total = int(result.get("top_level_entries", len(census)) or 0)
+    heading = "## Top-level census"
+    if total > len(census):
+        heading += f" (top {len(census)} of {total} entries by file count)"
+    lines += ["", heading, ""]
+    for name, n in census.items():
         lines.append(f"- `{name}` — {n} file(s)")
     lines += [
         "",

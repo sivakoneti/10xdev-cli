@@ -4,14 +4,14 @@ type: doc
 title: Codebase map
 status: complete
 tags:
-  - codebase-map
+- codebase-map
 created: 2026-08-24
-updated: 2026-08-26
+updated: '2026-08-26'
 ---
 
 ## Summary
 
-Auto-generated codebase map from `tenx scan` (44 files scanned).
+Auto-generated codebase map from `tenx scan` (53 files scanned).
 
 - project: tenx
 - code root: `/home/sivakoneti/ai-projects/10xdev`
@@ -28,7 +28,7 @@ Auto-generated codebase map from `tenx scan` (44 files scanned).
 
 - none
 
-## Top-level census
+## Top-level census (top 15 of 17 entries by file count)
 
 - `logs` — 2 file(s)
 - `.claude` — 1 file(s)
@@ -36,6 +36,7 @@ Auto-generated codebase map from `tenx scan` (44 files scanned).
 - `.continuerules` — 1 file(s)
 - `.github` — 1 file(s)
 - `.gitignore` — 1 file(s)
+- `.mcp.json` — 1 file(s)
 - `.windsurfrules` — 1 file(s)
 - `AGENTS.md` — 1 file(s)
 - `CHANGELOG.md` — 1 file(s)
@@ -44,7 +45,6 @@ Auto-generated codebase map from `tenx scan` (44 files scanned).
 - `GEMINI.md` — 1 file(s)
 - `QWEN.md` — 1 file(s)
 - `README.md` — 1 file(s)
-- `pyproject.toml` — 1 file(s)
 
 ## Notes
 

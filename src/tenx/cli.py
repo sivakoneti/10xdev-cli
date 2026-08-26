@@ -260,7 +260,12 @@ def cmd_scan(args: argparse.Namespace) -> int:
     print("agent files: " + (", ".join(result["agent_files"]) or "none"))
     if result["top_level_census"]:
         print()
-        print("top-level census (files per entry, depth<=2):")
+        total = int(result.get("top_level_entries",
+                               len(result["top_level_census"])) or 0)
+        suffix = (f" — showing top {len(result['top_level_census'])} "
+                  f"of {total} entries") if total > len(
+            result["top_level_census"]) else ""
+        print(f"top-level census (files per entry, depth<=2){suffix}:")
         for name, n in result["top_level_census"].items():
             print(f"  {name:<28} {n}")
     print()

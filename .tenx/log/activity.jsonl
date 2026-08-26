@@ -107,3 +107,9 @@
 {"ts": "2026-08-26T07:48:17+00:00", "type": "progress", "actor": "agent", "message": "Dogfood follow-up: tenx watchdog counts every blocker entry ever logged as open (watchdog.py open_blockers has no resolution check), so the T7 gate-block audit trail permanently flags HIGH. Reopened SPC-023/EPC-013, added T16 to fix.", "ref": "SPC-023"}
 {"ts": "2026-08-26T07:49:32+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-023-T16: in_progress -> done", "ref": "SPC-023"}
 {"ts": "2026-08-26T07:49:32+00:00", "type": "progress", "actor": "agent", "message": "T16 done: watchdog open_blockers now mirrors the blocker-unresolved resolution semantics; smoke covers flag+clear; both modes green; installed tenx refreshed.", "ref": "SPC-023"}
+{"ts": "2026-08-26T07:49:56+00:00", "type": "progress", "actor": "agent", "message": "codebase map updated from tenx scan (53 files, stacks: python)", "ref": "DOC-002"}
+{"ts": "2026-08-26T07:50:19+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-023-T17: created as todo", "ref": "SPC-023"}
+{"ts": "2026-08-26T07:50:19+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-023-T17: todo -> in_progress", "ref": "SPC-023"}
+{"ts": "2026-08-26T07:50:27+00:00", "type": "progress", "actor": "agent", "message": "codebase map updated from tenx scan (53 files, stacks: python)", "ref": "DOC-002"}
+{"ts": "2026-08-26T07:51:29+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-023-T17: in_progress -> done", "ref": "SPC-023"}
+{"ts": "2026-08-26T07:51:29+00:00", "type": "progress", "actor": "agent", "message": "T17 done: scan census truncation visible in DOC map + human output; smoke covers it; both modes green.", "ref": "SPC-023"}

@@ -60,6 +60,9 @@ tickets:
   - id: SPC-023-T16
     title: "watchdog: only flag unresolved blocker entries (mirror validate rule)"
     status: done
+  - id: SPC-023-T17
+    title: "scan: make census top-15 truncation visible in the codebase map"
+    status: done
 ---
 
 ## Summary

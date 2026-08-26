@@ -1352,6 +1352,15 @@ def main() -> int:
               not any("unresolved blocker" in str(i.get("problem", ""))
                       for i in wj["items"]))
 
+        # T17: census truncation is visible, not silent
+        for i in range(16):
+            d = gateproj / f"bulk{i}"
+            d.mkdir(exist_ok=True)
+            (d / "f.txt").write_text("x\n")
+        out = tenx("scan", cwd=gateproj).stdout
+        check("scan shows census truncation",
+              "showing top 15 of" in out, out[-300:])
+
         # T14: archive requires explicit approval
         r = tenx("archive", "EPC-001", cwd=gateproj, expect_rc=2)
         check("archive refused without --approved-by",
