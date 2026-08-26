@@ -20,8 +20,17 @@ Command map (mirrors the 10X harness from the David Ondrej podcast):
   tenx skills list|install         bundled skills per artifact type
   tenx hook [--mode agent]         emit the session-start packet
   tenx hook install [--agent X]    wire packet into claude/codex/opencode/gemini
-  tenx doctor                      environment + harness health check
+  tenx doctor [--json]             environment + harness + enforcement health
   tenx update [--check]            check for (and apply) CLI updates
+  tenx capabilities [--json]       what this tenx can do (agent-readable)
+  tenx changelog add|release       maintain CHANGELOG.md (gate-checked)
+  tenx exec <SPEC>                 print the execution brief for a spec
+  tenx gate commit-check           commit-time write-back freshness gate
+  tenx review [--json]             what awaits review (in_review specs/tickets)
+  tenx archive EPC-xxx             retire a finished epic (needs --approved-by)
+  tenx scan [--write]              map the codebase; --write stores it as a DOC
+  tenx sync push|pull              GitHub issue sync for spec tickets
+  tenx mcp [serve|install]         MCP server; install writes .mcp.json
 """
 
 from __future__ import annotations
@@ -42,7 +51,6 @@ from .artifacts import (
     TYPE_PREFIX,
     create_artifact,
     derived_status,
-    effective_priority,
     load_harness,
     update_meta,
 )
@@ -50,7 +58,7 @@ from .context import build_context, render_markdown
 from .execbrief import build_exec_brief
 from .discovery import (TENXLINK, code_root, env_project_root,
                         find_project_root, harness_root, is_initialized)
-from .adapters import adapter_ids, detect_adapters, get_adapter
+from .adapters import adapter_ids, detect_adapters
 from .hooks import (bootstrap_snippet, install as install_hook,
                      install_git_hook)
 from .nextup import compute_next, render_next
@@ -61,7 +69,6 @@ from .rules import RULE_CATALOG, list_rules_text, rebuild_convention_index, vali
 from .skills import install_skills, list_skills
 from .templates import BODY_TEMPLATES, CODE_ROOT_COMMENT, CONFIG_TEMPLATE, HARNESS_README
 from .update import run_update
-from .yamlite import dump_frontmatter
 
 
 def _root_or_die(explicit: str | None = None) -> Path:

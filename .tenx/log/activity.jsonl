@@ -120,3 +120,7 @@
 {"ts": "2026-08-26T07:56:31+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-023-T18: in_progress -> done", "ref": "SPC-023"}
 {"ts": "2026-08-26T07:56:31+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-023-T19: in_progress -> done", "ref": "SPC-023"}
 {"ts": "2026-08-26T07:56:31+00:00", "type": "progress", "actor": "agent", "message": "T18+T19 done: --root works in both arg positions (recursive subparser post-pass, SUPPRESS defaults; gate's private --root removed); scan --write preserves manual tail below the Notes promise. Smoke covers both; both modes green.", "ref": "SPC-023"}
+{"ts": "2026-08-26T07:56:47+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-023-T20: created as todo", "ref": "SPC-023"}
+{"ts": "2026-08-26T07:56:47+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-023-T20: todo -> in_progress", "ref": "SPC-023"}
+{"ts": "2026-08-26T07:58:20+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-023-T20: in_progress -> done", "ref": "SPC-023"}
+{"ts": "2026-08-26T07:58:20+00:00", "type": "progress", "actor": "agent", "message": "T20 done: LOW-findings cleanup (dead imports, docstring command map, README gaps, exec-brief validate-before-complete order). Parser builds; both smoke modes green.", "ref": "SPC-023"}

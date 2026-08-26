@@ -58,7 +58,7 @@ to tell a human before installing a newer version.
 
 A fleet of agents can run `tenx` against the same project at the same time.
 Mutating commands (`init`, `new`, `set`, `ticket`, `log`, `archive`,
-`hook`, `skills`, `sync`, `validate`) are serialized behind a per-project
+`hook`, `skills`, `sync`, `validate`, `changelog`) are serialized behind a per-project
 advisory lock at `.tenx/.lock` (via `fcntl.flock`; the OS releases it on
 crash or exit). State-file writes use atomic replacement (`temp +
 os.replace`), so readers never see partial files.
@@ -229,7 +229,8 @@ guidance, so existing artifacts are never flagged.
 ## Command reference
 
 ```bash
-tenx init [--bootstrap]          # scaffold .tenx/ in this project
+tenx init [--bootstrap] [--name N] [--description D] [--agent id|all|detected] [--no-hooks] [--force]  # scaffold .tenx/
+tenx init --standalone --code-root /path/to/code-repo  # dedicated PM repo governing a separate code repo
 tenx capabilities [--json]       # capability catalog: every command/tool + when-to-use guidance
 tenx context --mode operator     # human dashboard
 tenx context --mode agent [--budget N]  # full packet; --budget truncates low-priority sections
@@ -249,11 +250,11 @@ tenx next [--json]               # prioritized work queue (the self-improving lo
 tenx watchdog [--json] [--window 7] [--top 5]  # top things needing attention + are they handled
 tenx triage [--json] [--window 7] [--top 5]    # what needs a human now: act/watch/escalation
 tenx review [--json]             # what awaits review (in_review specs/tickets)
-tenx archive EPC-xxx [--yes]     # retire a finished epic and its specs
+tenx archive EPC-xxx --approved-by "Operator Name"  # retire a finished epic (explicit approval required)
 tenx scan [--json] [--write]     # map the codebase; --write stores it as a DOC
 tenx sync push|pull [--spec SPC-xxx] [--dry-run] [--json]
 tenx mcp [serve|install]         # MCP server; install writes .mcp.json
-tenx skills list|install [--target DIR]
+tenx skills list|install|status [--target DIR]
 tenx hook [--mode agent] [--budget N] [--no-log]  # emit the packet; logs a throttled session entry
 tenx hook install --agent <id|all|detected> [--git]  # see `tenx hook detect`
 tenx hook install --git        # install the pre-commit gate (tenx validate)

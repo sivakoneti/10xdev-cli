@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Completion-drift rules (derived-status-drift, orphan-spec, epic-progress-drift) are now errors when an artifact is authored complete without the derived progress to back it — hand-editing status: complete in a spec/epic file no longer passes validate (SPC-023)
 - Evidence gate changelog check now scans every changelog section (not only [Unreleased]), so work documented under a released version also satisfies docs-sync (SPC-023)
+- cleanup from audit LOW findings: removed dead cli.py imports, completed the cli.py command map in the module docstring (capabilities/changelog/exec/gate/review/archive/scan/sync/mcp), README fixes (changelog in the mutating-command list, skills status, archive --approved-by, full init flag set), and the exec brief now runs validate before set-complete (SPC-023)
 
 ### Fixed
 - Git hook discovery handles linked worktrees (.git pointer files resolve to the common hooks dir); the pre-commit hook is timeout-wrapped and fails open with a warning if tenx itself fails, so a broken tenx can never block all commits (SPC-023)

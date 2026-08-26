@@ -69,6 +69,9 @@ tickets:
   - id: SPC-023-T19
     title: "scan --write: actually preserve manual additions below the Notes promise"
     status: done
+  - id: SPC-023-T20
+    title: "LOW-findings cleanup: dead imports, cli docstring map, README gaps, exec-brief order"
+    status: done
 ---
 
 ## Summary
