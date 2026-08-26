@@ -113,3 +113,10 @@
 {"ts": "2026-08-26T07:50:27+00:00", "type": "progress", "actor": "agent", "message": "codebase map updated from tenx scan (53 files, stacks: python)", "ref": "DOC-002"}
 {"ts": "2026-08-26T07:51:29+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-023-T17: in_progress -> done", "ref": "SPC-023"}
 {"ts": "2026-08-26T07:51:29+00:00", "type": "progress", "actor": "agent", "message": "T17 done: scan census truncation visible in DOC map + human output; smoke covers it; both modes green.", "ref": "SPC-023"}
+{"ts": "2026-08-26T07:52:16+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-023-T18: created as todo", "ref": "SPC-023"}
+{"ts": "2026-08-26T07:52:16+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-023-T18: todo -> in_progress", "ref": "SPC-023"}
+{"ts": "2026-08-26T07:53:04+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-023-T19: created as todo", "ref": "SPC-023"}
+{"ts": "2026-08-26T07:53:04+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-023-T19: todo -> in_progress", "ref": "SPC-023"}
+{"ts": "2026-08-26T07:56:31+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-023-T18: in_progress -> done", "ref": "SPC-023"}
+{"ts": "2026-08-26T07:56:31+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-023-T19: in_progress -> done", "ref": "SPC-023"}
+{"ts": "2026-08-26T07:56:31+00:00", "type": "progress", "actor": "agent", "message": "T18+T19 done: --root works in both arg positions (recursive subparser post-pass, SUPPRESS defaults; gate's private --root removed); scan --write preserves manual tail below the Notes promise. Smoke covers both; both modes green.", "ref": "SPC-023"}

@@ -1361,6 +1361,23 @@ def main() -> int:
         check("scan shows census truncation",
               "showing top 15 of" in out, out[-300:])
 
+        # T18: --root works before AND after the subcommand
+        # (cwd is deliberately OUTSIDE the project so --root must work)
+        tenx("next", "--root", str(gateproj), cwd=gateproj.parent)
+        tenx("--root", str(gateproj), "next", cwd=gateproj.parent)
+        check("--root accepted in both positions", True)
+
+        # T19: scan --write preserves manual additions below the promise
+        tenx("scan", "--write", cwd=gateproj)
+        maps = sorted((gateproj / ".tenx" / "docs").glob("*codebase-map*"))
+        check("codebase map doc exists", bool(maps))
+        if maps:
+            with maps[0].open("a") as fh:
+                fh.write("\n## Manual notes\n\n- keep me around\n")
+            tenx("scan", "--write", cwd=gateproj)
+            check("scan --write preserves manual additions",
+                  "keep me around" in maps[0].read_text())
+
         # T14: archive requires explicit approval
         r = tenx("archive", "EPC-001", cwd=gateproj, expect_rc=2)
         check("archive refused without --approved-by",

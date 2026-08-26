@@ -220,6 +220,24 @@ def _render_body(result: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _preserve_manual_tail(old_body: str, new_body: str) -> str:
+    """Keep hand-written notes appended below the regeneration promise.
+
+    SPC-023-T19: the rendered Notes section promises that manual
+    additions below it survive re-scans. Honor that: find the promise
+    line in the OLD body and carry over anything that follows it.
+    """
+    marker = "Manual additions below this line"
+    old_lines = old_body.splitlines()
+    for i, line in enumerate(old_lines):
+        if marker in line:
+            tail = "\n".join(old_lines[i + 1:]).strip("\n")
+            if tail.strip():
+                return new_body.rstrip("\n") + "\n\n" + tail + "\n"
+            break
+    return new_body
+
+
 def write_codebase_map(project_root: Path, code_root: Path,
                        result: dict[str, Any]) -> str:
     """Upsert the DOC artifact tagged `codebase-map`. Returns rel path."""
@@ -240,7 +258,7 @@ def write_codebase_map(project_root: Path, code_root: Path,
     body = _render_body(result)
     if existing is not None:
         existing.meta["updated"] = today()
-        existing.body = body
+        existing.body = _preserve_manual_tail(existing.body, body)
         existing.path.write_text(existing.render(), encoding="utf-8")
         art = existing
         verb = "updated"

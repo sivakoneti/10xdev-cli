@@ -1433,7 +1433,6 @@ def build_parser() -> argparse.ArgumentParser:
     gsp = sp.add_subparsers(dest="gate_cmd")
     g = gsp.add_parser("commit-check",
                        help="block/warn when staged code has no write-back")
-    g.add_argument("--root", default=None)
     g.set_defaults(func=cmd_gate)
     sp.set_defaults(func=lambda a: 2)
 
@@ -1543,6 +1542,25 @@ def build_parser() -> argparse.ArgumentParser:
                     help="artifact ref to tag onto an add entry (e.g. SPC-018)")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_changelog)
+
+    # SPC-023-T18: argparse puts top-level options BEFORE the subcommand,
+    # so `tenx validate --root X` died with "unrecognized arguments" —
+    # a trap for agents and humans. Accept --root in both positions:
+    # SUPPRESS means the subcommand-level flag only overrides when given.
+    def _add_root_everywhere(parser: argparse.ArgumentParser) -> None:
+        for action in parser._actions:
+            if not isinstance(action, argparse._SubParsersAction):
+                continue
+            for subparser in action.choices.values():
+                has_root = any("--root" in act.option_strings
+                               for act in subparser._actions)
+                if not has_root:
+                    subparser.add_argument(
+                        "--root", default=argparse.SUPPRESS,
+                        help="project root (default: auto-discover)")
+                _add_root_everywhere(subparser)
+
+    _add_root_everywhere(p)
 
     return p
 

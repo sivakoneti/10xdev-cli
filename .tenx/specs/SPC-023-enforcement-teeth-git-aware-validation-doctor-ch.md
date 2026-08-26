@@ -63,6 +63,12 @@ tickets:
   - id: SPC-023-T17
     title: "scan: make census top-15 truncation visible in the codebase map"
     status: done
+  - id: SPC-023-T18
+    title: "CLI: --root accepted after the subcommand too (argparse trap)"
+    status: done
+  - id: SPC-023-T19
+    title: "scan --write: actually preserve manual additions below the Notes promise"
+    status: done
 ---
 
 ## Summary

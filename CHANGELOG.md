@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Docs refresh: architecture overview + README MCP tool list updated to current reality, dead docs/agent-adapters.md link removed, bundled tenx-process skill priority order aligned with tenx next, exec brief now documents the evidence gate, changelog requirement, and commit gate (SPC-023)
 - tenx watchdog now flags only unresolved blocker log entries (a blocker counts as resolved once a later progress/decision entry follows up on the same ref) — audited gate-block entries no longer pollute the watchdog forever (SPC-023)
 - tenx scan makes the census top-15 truncation visible (heading says 'top 15 of N entries'), so a missing entry in the codebase map reads as not-shown instead of deleted (SPC-023)
+- --root is now accepted both before and after the subcommand (tenx validate --root X works; previously only tenx --root X validate did) (SPC-023)
+- tenx scan --write now actually preserves manual additions appended below the regeneration promise in the codebase map (the promise was previously false: re-scans silently deleted them) (SPC-023)
 
 ## [v0.18.0] - 2026-08-26
 
