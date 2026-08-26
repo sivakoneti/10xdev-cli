@@ -1245,9 +1245,29 @@ def main() -> int:
                        cwd=gateproj, check=True)
         out = tenx("validate", "--json", cwd=gateproj).stdout
         warns = json.loads(out)["warnings"]
-        check("commit-without-writeback flags sneaky commit",
-              any(w["rule"] == "commit-without-writeback" for w in warns),
-              str(warns)[:300])
+        fired = any(w["rule"] == "commit-without-writeback" for w in warns)
+        diag = str(warns)[:300]
+        if not fired:
+            # Diagnose in place: reproduce the rule's exact git pipeline
+            # so a remote failure (e.g. CI runner) explains itself.
+            def _g(*a):
+                r = subprocess.run(["git", *a], cwd=gateproj,
+                                   capture_output=True, text=True)
+                return f"{' '.join(a[:2])}: rc={r.returncode} out={r.stdout[:200]!r} err={r.stderr[:150]!r}"
+            since = (_dt2.datetime.now(_dt2.timezone.utc)
+                     - _dt2.timedelta(hours=4)).isoformat()
+            diag = " || ".join([
+                _g("--version"),
+                _g("rev-parse", "--git-dir"),
+                _g("log", f"--since={since}", "--no-merges", "-n", "20",
+                   "--pretty=format:%H%x00%aI%x00%s"),
+                _g("show", "--name-only", "--pretty=format:", "HEAD"),
+                "entries=" + str([(json.loads(l).get("type"),
+                                   json.loads(l).get("ts"))
+                                  for l in act.read_text().splitlines()
+                                  if l.strip()])[:400],
+            ])
+        check("commit-without-writeback flags sneaky commit", fired, diag)
         tenx("log", "added sneak.py", "--ref", "SPC-001", cwd=gateproj)
         out = tenx("validate", "--json", cwd=gateproj).stdout
         warns = json.loads(out)["warnings"]
@@ -1275,8 +1295,22 @@ def main() -> int:
               r.returncode == 0)
         (gateproj / ".tenx/config.yaml").open("a").write(
             "\ncommit_gate: on\n")
-        tenx("gate", "commit-check", cwd=gateproj, expect_rc=1)
-        check("commit-check mode=on blocks unlogged code", True)
+        try:
+            tenx("gate", "commit-check", cwd=gateproj, expect_rc=1)
+            check("commit-check mode=on blocks unlogged code", True)
+        except AssertionError as exc:
+            staged = subprocess.run(
+                ["git", "diff", "--cached", "--name-only"], cwd=gateproj,
+                capture_output=True, text=True)
+            head = subprocess.run(
+                ["git", "log", "-1", "--pretty=%aI", "HEAD"], cwd=gateproj,
+                capture_output=True, text=True)
+            ents = [(json.loads(l).get("type"), json.loads(l).get("ts"))
+                    for l in act.read_text().splitlines() if l.strip()]
+            raise AssertionError(
+                f"{exc} || staged rc={staged.returncode} "
+                f"out={staged.stdout!r} || HEAD rc={head.returncode} "
+                f"out={head.stdout!r} || entries={ents}")
         # process-only staged changes never trip the gate
         subprocess.run(["git", "reset", "-q"], cwd=gateproj, check=True)
         (gateproj / ".tenx" / "notes.txt").write_text("process only\n")

@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - the tenx repo now runs commit_gate: on — staged code without activity-log write-back blocks the commit (new projects keep the warn default) (SPC-024)
+- commit-without-writeback rule builds its git --since window with whole-second ISO timestamps for consistent parsing across git versions (SPC-024)
 
 ### Fixed
 - smoke suite module mode is now hermetic: it provides a PATH shim running the source tree so the git pre-commit gate works on bare checkouts (fresh CI runners) without an installed tenx (SPC-024)

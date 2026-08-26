@@ -740,8 +740,11 @@ def _rule_commit_writeback(project_root: Path, harness: Harness,
                                capture_output=True, text=True, timeout=10)
         if probe.returncode != 0:
             return  # not a git repo: nothing to compare against
+        # Whole seconds only: some git versions parse fractional ISO
+        # seconds inconsistently, and commit timestamps are second-granular.
         since = (dt.datetime.now(dt.timezone.utc)
-                 - dt.timedelta(hours=window_h)).isoformat()
+                 - dt.timedelta(hours=window_h)).replace(
+                     microsecond=0).isoformat()
         log = subprocess.run(
             ["git", "log", f"--since={since}", "--no-merges", "-n", "20",
              "--pretty=format:%H%x00%aI%x00%s"],
