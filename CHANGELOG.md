@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.19.0] - 2026-08-26
+
 ### Added
 - Git-aware enforcement: tenx validate now flags recent code commits that have no activity-log write-back (commit-without-writeback rule, fail-open without git), and a new staged-change freshness gate (tenx gate commit-check) runs inside the git pre-commit hook; configure with commit_gate: on|warn|off (default warn) (SPC-023)
 - tenx doctor now audits enforcement health — missing/stale git pre-commit gate, core.hooksPath bypass, stale managed agent surfaces, missing .mcp.json / bundled skills, commit_gate: off — exits non-zero on problems with exact fix commands; tenx doctor --json adds enforcement_problems (SPC-023)
