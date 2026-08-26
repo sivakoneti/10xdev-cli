@@ -162,7 +162,7 @@ def commit_check(project_root: Path,
     import subprocess
 
     from .discovery import code_root as _code_root
-    from .rules import _is_code_path
+    from .rules import _is_code_path, parse_git_ts
 
     try:
         cr = _code_root(project_root, harness.config)
@@ -180,12 +180,9 @@ def commit_check(project_root: Path,
             capture_output=True, text=True, timeout=15)
         prev_ts = None
         if prev.returncode == 0 and prev.stdout.strip():
-            try:
-                prev_ts = dt.datetime.fromisoformat(prev.stdout.strip())
-                if prev_ts.tzinfo is None:
-                    prev_ts = prev_ts.replace(tzinfo=dt.timezone.utc)
-            except ValueError:
-                prev_ts = None
+            prev_ts = parse_git_ts(prev.stdout.strip())
+            if prev_ts is not None and prev_ts.tzinfo is None:
+                prev_ts = prev_ts.replace(tzinfo=dt.timezone.utc)
         for e in reversed(activity.read_entries(project_root)):
             if str(e.get("type", "")) not in ("progress", "review",
                                               "decision", "note"):

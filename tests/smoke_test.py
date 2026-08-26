@@ -1204,9 +1204,22 @@ def main() -> int:
         tenx("init", "--name", "gateproj", cwd=gateproj)
         tenx("new", "epic", "Gate epic", cwd=gateproj)
         tenx("new", "spec", "Gate spec", "--epic", "EPC-001", cwd=gateproj)
+        def _gitc(msg: str) -> None:
+            # Commit in UTC so %aI renders the trailing 'Z' git emits on
+            # UTC hosts — the exact shape Python 3.10's fromisoformat
+            # rejects. Keeps the git-aware checks honest on every runner.
+            subprocess.run(["git", "commit", "-qm", msg], cwd=gateproj,
+                           env={**os.environ, "TZ": "UTC"}, check=True)
+
+        from tenx.rules import parse_git_ts
+        _zts = parse_git_ts("2026-08-26T11:08:52Z")
+        check("parse_git_ts handles git UTC 'Z' timestamps",
+              _zts is not None
+              and _zts.utcoffset() == _dt.timedelta(0)
+              and parse_git_ts("not a date") is None)
+
         subprocess.run(["git", "add", "-A"], cwd=gateproj, check=True)
-        subprocess.run(["git", "commit", "-qm", "baseline"],
-                       cwd=gateproj, check=True)
+        _gitc("baseline")
 
         # T5: blocked is a legal ticket status
         tenx("ticket", "SPC-001", "SPC-001-T1", "blocked", cwd=gateproj)
@@ -1241,8 +1254,7 @@ def main() -> int:
         (gateproj / "src" / "sneak.py").write_text("x = 1\n")
         subprocess.run(["git", "add", "src/sneak.py"], cwd=gateproj,
                        check=True)
-        subprocess.run(["git", "commit", "-qm", "sneaky"],
-                       cwd=gateproj, check=True)
+        _gitc("sneaky")
         out = tenx("validate", "--json", cwd=gateproj).stdout
         warns = json.loads(out)["warnings"]
         fired = any(w["rule"] == "commit-without-writeback" for w in warns)
@@ -1285,8 +1297,7 @@ def main() -> int:
         (gateproj / "src" / "sneak.py").write_text("x = 2\n")
         subprocess.run(["git", "add", "src/sneak.py"], cwd=gateproj,
                        check=True)
-        subprocess.run(["git", "commit", "-qm", "documented change"],
-                       cwd=gateproj, check=True)
+        _gitc("documented change")
         (gateproj / "src" / "sneak.py").write_text("x = 3\n")
         subprocess.run(["git", "add", "src/sneak.py"], cwd=gateproj,
                        check=True)
@@ -1325,8 +1336,7 @@ def main() -> int:
                        check=True)
         tenx("gate", "commit-check", cwd=gateproj)
         check("commit-check passes after write-back", True)
-        subprocess.run(["git", "commit", "-qm", "documented tweak"],
-                       cwd=gateproj, check=True)
+        _gitc("documented tweak")
 
         # T1: doctor enforcement audit + --json
         hook = gateproj / ".git/hooks/pre-commit"

@@ -2,7 +2,7 @@
 id: EPC-014
 type: epic
 title: Rollout readiness — CI for the harness + strict self-enforcement
-status: in_progress
+status: complete
 created: 2026-08-26
 updated: 2026-08-26
 ---

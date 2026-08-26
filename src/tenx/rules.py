@@ -712,6 +712,21 @@ def _is_code_path(rel: str) -> bool:
                    for p in _NON_CODE_PREFIXES)
 
 
+def parse_git_ts(ts: str) -> dt.datetime | None:
+    """Parse a git %aI/%cI timestamp on every supported Python.
+
+    On UTC hosts git prints a trailing 'Z' (2026-08-26T11:08:52Z),
+    which Python 3.10's datetime.fromisoformat rejects (3.11+ accepts
+    it). Returns None on unparseable input instead of raising — callers
+    fail open on git data they cannot trust.
+    """
+    try:
+        return dt.datetime.fromisoformat(
+            str(ts).strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
 def _rule_commit_writeback(project_root: Path, harness: Harness,
                            rs: RuleSet) -> None:
     """Recent commits touching code must have a matching activity entry.
@@ -765,9 +780,8 @@ def _rule_commit_writeback(project_root: Path, harness: Harness,
                 continue
             if not any(_is_code_path(l) for l in files.stdout.splitlines()):
                 continue  # harness/process-only commit: it IS the write-back
-            try:
-                cts = dt.datetime.fromisoformat(when)
-            except ValueError:
+            cts = parse_git_ts(when)
+            if cts is None:
                 continue
             if cts.tzinfo is None:
                 cts = cts.replace(tzinfo=dt.timezone.utc)

@@ -2,7 +2,7 @@
 id: SPC-024
 type: spec
 title: CI workflow + commit_gate on for the tenx repo
-status: in_progress
+status: complete
 epic: EPC-014
 created: 2026-08-26
 updated: 2026-08-26
@@ -12,6 +12,9 @@ tickets:
     status: done
   - id: SPC-024-T2
     title: "flip commit_gate to on in this repo's config (keep warn default for new projects)"
+    status: done
+  - id: SPC-024-T3
+    title: Fix git Z-suffix timestamp parsing on Python 3.10 (UTC hosts)
     status: done
 ---
 

@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - smoke suite module mode is now hermetic: it provides a PATH shim running the source tree so the git pre-commit gate works on bare checkouts (fresh CI runners) without an installed tenx (SPC-024)
+- git-aware enforcement (commit-without-writeback rule, gate commit-check) now parses git timestamps with a trailing Z — on UTC hosts with Python 3.10 both previously failed open and never fired (SPC-024)
 
 ## [v0.19.0] - 2026-08-26
 
