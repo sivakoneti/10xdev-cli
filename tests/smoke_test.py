@@ -1338,6 +1338,20 @@ def main() -> int:
                   for e in hist))
         tenx("set", "SPC-001", "status", "draft", cwd=gateproj)
 
+        # T16: watchdog flags only UNRESOLVED blocker entries
+        tenx("log", "simulated open blocker", "--type", "blocker",
+             "--ref", "SPC-001", cwd=gateproj)
+        wj = json.loads(tenx("watchdog", "--json", cwd=gateproj).stdout)
+        check("watchdog flags unresolved blocker",
+              any("unresolved blocker" in str(i.get("problem", ""))
+                  for i in wj["items"]), str(wj)[:300])
+        tenx("log", "resolved the simulated blocker", "--ref", "SPC-001",
+             cwd=gateproj)
+        wj = json.loads(tenx("watchdog", "--json", cwd=gateproj).stdout)
+        check("watchdog clears resolved blocker",
+              not any("unresolved blocker" in str(i.get("problem", ""))
+                      for i in wj["items"]))
+
         # T14: archive requires explicit approval
         r = tenx("archive", "EPC-001", cwd=gateproj, expect_rc=2)
         check("archive refused without --approved-by",

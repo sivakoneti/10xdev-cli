@@ -57,6 +57,9 @@ tickets:
   - id: SPC-023-T15
     title: capabilities catalog fixes + scan manual-additions note + doctor --json
     status: done
+  - id: SPC-023-T16
+    title: "watchdog: only flag unresolved blocker entries (mirror validate rule)"
+    status: done
 ---
 
 ## Summary

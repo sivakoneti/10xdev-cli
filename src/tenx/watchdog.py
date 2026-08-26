@@ -136,13 +136,26 @@ def compute_watchdog(project_root: Path, harness: Harness | None = None,
                 path=s.rel(project_root), biz=biz)
 
     # ---- high: unresolved blocker log entries -------------------------
-    open_blockers = [e for e in entries if e.get("type") == "blocker"]
+    # SPC-023-T16: a blocker is OPEN only until a later progress/decision
+    # entry follows up on the same ref — same resolution semantics as the
+    # validate rule `blocker-unresolved`. Gate blocks and other audited
+    # blockers that were already worked must not keep flagging HIGH.
+    open_blockers = []
+    for i, e in enumerate(entries):
+        if str(e.get("type", "")) != "blocker":
+            continue
+        ref = str(e.get("ref", "") or "")
+        resolved = any(
+            str(later.get("type", "")) in ("progress", "decision")
+            and (not ref or str(later.get("ref", "") or "") == ref)
+            for later in entries[i + 1:])
+        if not resolved:
+            open_blockers.append(e)
     if open_blockers:
         last = open_blockers[-1]
         ref = str(last.get("ref", "") or "") or None
-        d = _days_ago(last.get("ts", ""))
-        add("high", f"{len(open_blockers)} blocker(s) logged", ref,
-            "resolve and log the fix, or re-triage",
+        add("high", f"{len(open_blockers)} unresolved blocker(s) logged",
+            ref, "resolve and log the fix, or re-triage",
             detail=str(last.get("message", ""))[:120],
             biz="")
 
