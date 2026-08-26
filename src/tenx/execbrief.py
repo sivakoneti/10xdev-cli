@@ -40,11 +40,17 @@ ticket by ticket, and write back every state change to the harness.
 1. Document the shipped work (docs-sync, enforced):
    `tenx changelog add "<what shipped>" --ref {spec_id}`
 2. `tenx validate` — fix every error and warning you introduced.
-3. `tenx set {spec_id} status complete` — the evidence gate checks that
+3. `tenx converge {spec_id}` — if the spec uses FR-### requirements,
+   converge must report CONVERGED: every requirement satisfied by a done
+   ticket, no open [NEEDS CLARIFICATION] markers. Use
+   `tenx converge {spec_id} --append` to create tickets for requirements
+   nobody covered yet. Specs without FR-### markers report NO REQUIREMENTS
+   and pass.
+4. `tenx set {spec_id} status complete` — the evidence gate checks that
    every ticket is done, that work is logged/evidenced, and that the
    changelog has an entry. If it blocks, fix the reason it names; use
    `--force` only on explicit human instruction (it is audit-logged).
-4. Commit the code repo, then commit the harness changes (they are the
+5. Commit the code repo, then commit the harness changes (they are the
    audit trail of what you did). The pre-commit gate re-runs validate and
    warns/blocks when staged code has no write-back behind it.
 

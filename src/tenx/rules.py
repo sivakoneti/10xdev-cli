@@ -138,6 +138,19 @@ RULE_CATALOG: dict[str, tuple[str, str]] = {
     "blocker-unresolved": ("info",
                            "recent blocker log entry has no follow-up "
                            "progress/decision entry (param: blocker_days)"),
+    # -- spec artifact discipline (SPC-025) --------------------------------
+    "clarify-markers-open": ("error",
+                             "spec still contains [NEEDS CLARIFICATION] "
+                             "markers; resolve them (or record the answer) "
+                             "before work continues"),
+    "requirement-uncovered": ("warning",
+                              "a requirement (FR-###) has no ticket "
+                              "referencing it; add a ticket like "
+                              '"[FR-001] ..." so coverage is traceable'),
+    "requirement-orphan": ("info",
+                           "a ticket references an FR-### id that does not "
+                           "appear in the spec body"),
+
     # -- docs-sync / changelog -------------------------------------------
     "changelog-missing": ("warning",
                           "no CHANGELOG.md; docs-sync is off. Run "
@@ -290,6 +303,8 @@ def validate(project_root: Path, harness: Harness | None = None) -> RuleSet:
     _rule_log_quiet(project_root, rs)
     _rule_commit_writeback(project_root, harness, rs)
     _rule_agent_surface(project_root, harness, rs)
+    _rule_clarify_markers(harness, rs)
+    _rule_requirement_coverage(harness, rs)
     _rule_changelog(project_root, harness, rs)
     return rs
 
@@ -833,3 +848,86 @@ def _rule_agent_surface(project_root: Path, harness: Harness,
                    "`tenx hook install --agent all`")
     except Exception:
         return
+
+
+# -- spec artifact discipline (SPC-025) ------------------------------------
+
+import re as _re
+
+_FENCE_RE = _re.compile(r"^```.*?^```", _re.S | _re.M)
+_INLINE_CODE_RE = _re.compile(r"`[^`\n]*`")
+_CLARIFY_RE = _re.compile(r"\[NEEDS CLARIFICATION", _re.I)
+_FR_RE = _re.compile(r"\bFR-(\d+)\b")
+
+
+def strip_code(text: str) -> str:
+    """Drop fenced code blocks and inline code spans so rule scans only see
+    prose/requirement lines — template guidance may show marker examples
+    inside backticks without counting as real markers."""
+    text = _FENCE_RE.sub("", text)
+    return _INLINE_CODE_RE.sub("", text)
+
+
+def fr_ids_in(text: str) -> list[str]:
+    """All FR-### ids referenced in text, normalized, order-preserving,
+    de-duplicated. Code spans are ignored: backticked ids are examples or
+    prose quotations, not real references."""
+    seen: dict[str, None] = {}
+    for m in _FR_RE.finditer(strip_code(text)):
+        seen.setdefault(f"FR-{int(m.group(1)):03d}", None)
+    return list(seen)
+
+
+def clarify_markers_open(body: str) -> int:
+    """Count of real [NEEDS CLARIFICATION] markers outside code spans."""
+    return len(_CLARIFY_RE.findall(strip_code(body)))
+
+
+def _rule_clarify_markers(harness: Harness, rs: RuleSet) -> None:
+    """SPC-025-T2: ambiguity must be resolved before a spec leaves draft.
+    Drafts may carry markers freely; any later status with an open marker
+    is an error."""
+    for s in harness.by_type("spec"):
+        if s.parse_error or s.status == "draft":
+            continue
+        n = clarify_markers_open(s.body)
+        if n:
+            rs.add("clarify-markers-open", "error",
+                   f"{s.id}: {n} unresolved [NEEDS CLARIFICATION] marker(s) "
+                   f"in a '{s.status}' spec; resolve them or record the "
+                   "answer, then remove the marker",
+                   artifact_id=s.id)
+
+
+def _rule_requirement_coverage(harness: Harness, rs: RuleSet) -> None:
+    """SPC-025-T3: marker-driven requirement coverage. Only specs that use
+    FR-### ids participate, so legacy specs are untouched.
+
+    - requirement-uncovered (warning): an FR id in the body that no ticket
+      title references (spec must already be past draft).
+    - requirement-orphan (info): a ticket title references an FR id that
+      does not exist in the body."""
+    for s in harness.by_type("spec"):
+        if s.parse_error:
+            continue
+        body_ids = fr_ids_in(s.body)
+        if not body_ids:
+            continue  # opt-in by usage: legacy specs are immune
+        tickets = s.tickets
+        ticket_text = " ".join(str(t.get("title", "")) for t in tickets)
+        ticket_ids = set(fr_ids_in(ticket_text))
+        if s.status != "draft":
+            for fr in body_ids:
+                if fr not in ticket_ids:
+                    rs.add("requirement-uncovered", "warning",
+                           f"{s.id}: {fr} has no ticket referencing it; "
+                           f"add one (e.g. \"[{fr}] ...\") or delete the "
+                           "requirement",
+                           artifact_id=s.id)
+        for t in tickets:
+            for fr in fr_ids_in(str(t.get("title", ""))):
+                if fr not in body_ids:
+                    rs.add("requirement-orphan", "info",
+                           f"{s.id}: ticket '{t.get('id', '?')}' references "
+                           f"{fr} which is not in the spec body",
+                           artifact_id=s.id)

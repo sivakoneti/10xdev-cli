@@ -50,6 +50,24 @@ Goals:
 Non-goals:
 - Things that could be goals but are explicitly not.
 
+## Requirements
+
+Numbered functional requirements — one testable MUST per line. Reference
+each as FR-### everywhere else (tickets, validation, evidence). If
+something is unknown, do not guess: mark it inline as
+`[NEEDS CLARIFICATION: the question]` and resolve it before this spec
+leaves draft — `tenx validate` blocks work on specs with open markers.
+
+- FR-001: The system MUST ...
+- FR-002: The system MUST ... [NEEDS CLARIFICATION: example question]
+
+## Success criteria
+
+Numbered, measurable outcomes that prove the requirements are met. Each
+SC-### must be verifiable, not an activity.
+
+- SC-001: ...
+
 ## Design
 
 The approach and its key trade-offs: components, files touched, data flow,
@@ -74,7 +92,9 @@ frontmatter `tickets:` list in sync with this section.
 ## Validation
 
 Exact commands, tests, and manual checks that prove the spec complete — the
-definition of done.
+definition of done. Where practical, phrase acceptance scenarios as
+Given/When/Then lines tied to requirement ids, e.g.
+`FR-001: Given <state>, When <action>, Then <observable outcome>`.
 
 ## Open questions
 
@@ -160,6 +180,8 @@ CLI quick reference (run from the project root):
 - `tenx log "message" --ref SPC-001` — record significant work
 - `tenx validate` — lint the SDLC (drift, broken refs, stale artifacts)
 - `tenx set <ID> status <status>` / `tenx ticket <SPEC> <TICKET> done`
+- `tenx converge <SPC>` — requirement coverage before completion
+  (FR-### vs tickets; `--append` adds tickets for uncovered requirements)
 """
 
 CONFIG_TEMPLATE = """# tenx harness configuration

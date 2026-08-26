@@ -840,6 +840,53 @@ def cmd_gate(args: argparse.Namespace) -> int:
     return 1
 
 
+def cmd_converge(args: argparse.Namespace) -> int:
+    """Deterministic spec-completion convergence (SPC-025-T4): map FR-###
+    requirements to tickets, report satisfied/open, optionally append
+    missing tickets. Run before `tenx set <SPC> status complete`."""
+    root = _root_or_die(args.root)
+    _require_init(root)
+    harness = load_harness(root)
+    spec = harness.get(args.spec_id.upper())
+    if spec is None or spec.type != "spec":
+        print(f"tenx: {args.spec_id} is not a spec", file=sys.stderr)
+        return 2
+    from .converge import append_missing_tickets, converge
+    report = converge(spec, harness)
+    if args.append:
+        created = append_missing_tickets(spec, report, harness)
+        if created:
+            harness = load_harness(root)
+            spec = harness.get(spec.id)
+            report = converge(spec, harness)
+            report["appended_tickets"] = created
+    if args.json:
+        print(json.dumps(report, indent=2))
+    else:
+        print(f"# tenx converge {report['spec']} "
+              f"(status: {report['status']}) -> {report['verdict']}")
+        if report["verdict"] == "NO REQUIREMENTS":
+            print("No FR-### requirements in this spec; nothing to "
+                  "converge. Add numbered requirements to opt in.")
+        for r in report["requirements"]:
+            mark = "x" if r["satisfied"] else " "
+            refs = ", ".join(r["tickets"]) or "NO TICKET"
+            print(f"- [{mark}] {r['id']} {r['text'][:70]} ({refs})")
+        if report["success_criteria"]:
+            print(f"success criteria: "
+                  f"{', '.join(report['success_criteria'])}")
+        if report["open_clarify_markers"]:
+            print(f"open [NEEDS CLARIFICATION] markers: "
+                  f"{report['open_clarify_markers']}")
+        if report.get("appended_tickets"):
+            print("appended tickets: "
+                  + ", ".join(report["appended_tickets"]))
+        if not report["converged"]:
+            print("not converged: satisfy open requirements (done "
+                  "tickets) and resolve clarify markers, then re-run.")
+    return 0 if report["converged"] else 1
+
+
 def cmd_validate(args: argparse.Namespace) -> int:
     if getattr(args, "list_rules", False):
         if args.json:
@@ -1442,6 +1489,17 @@ def build_parser() -> argparse.ArgumentParser:
                        help="block/warn when staged code has no write-back")
     g.set_defaults(func=cmd_gate)
     sp.set_defaults(func=lambda a: 2)
+
+    sp = sub.add_parser("converge",
+                        help="report/fix spec requirement coverage "
+                             "(FR-### vs tickets) before completion")
+    sp.add_argument("spec_id", help="spec id, e.g. SPC-001")
+    sp.add_argument("--json", action="store_true",
+                    help="machine-readable report")
+    sp.add_argument("--append", action="store_true",
+                    help="append a todo ticket for every uncovered "
+                         "requirement (append-only)")
+    sp.set_defaults(func=cmd_converge)
 
     sp = sub.add_parser("validate", help="lint the SDLC")
     sp.add_argument("--fix", action="store_true",

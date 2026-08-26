@@ -66,6 +66,22 @@ def add_tickets(spec: Path) -> None:
     spec.write_text(text[:fm_end] + block + text[fm_end:])
 
 
+def strip_discipline(cwd: Path) -> None:
+    """SPC-025: opt legacy-style smoke specs out of the marker-driven
+    discipline rules by deleting the template FR examples (one of which
+    carries a clarify marker). Specs without FR-### ids are immune to the
+    coverage rules, and backticked guidance markers never count."""
+    for sp in (cwd / ".tenx" / "specs").glob("*.md"):
+        txt = sp.read_text(encoding="utf-8")
+        if "FR-001" not in txt:
+            continue
+        txt = txt.replace("- FR-001: The system MUST ...\n", "")
+        txt = txt.replace(
+            "- FR-002: The system MUST ... "
+            "[NEEDS CLARIFICATION: example question]\n", "")
+        sp.write_text(txt, encoding="utf-8")
+
+
 def main() -> int:
     tmp = Path(tempfile.mkdtemp(prefix="tenx-smoke-"))
     proj = tmp / "proj"
@@ -89,6 +105,7 @@ def main() -> int:
         print("== artifacts ==")
         tenx("new", "epic", "Epic One", cwd=proj)
         tenx("new", "spec", "Spec One", "--epic", "EPC-001", cwd=proj)
+        strip_discipline(proj)
         tenx("new", "convention", "Rule One", cwd=proj)
         tenx("new", "doc", "Doc One", cwd=proj)
         out = tenx("list", "--json", cwd=proj).stdout
@@ -351,6 +368,7 @@ def main() -> int:
         check("doctor healthy", "validation: 0 errors" in out, out)
         print("== exec brief (spec-first autonomous execution) ==")
         tenx("new", "spec", "Exec Spec", "--epic", "EPC-001", cwd=proj)
+        strip_discipline(proj)
         tenx("ticket", "SPC-002", "SPC-002-T1", "todo", cwd=proj)
         out = tenx("exec", "SPC-002", cwd=proj).stdout
         check("exec names spec", "EXECUTION BRIEF — SPC-002" in out)
@@ -553,6 +571,7 @@ def main() -> int:
         tenx("new", "epic", "Rules epic", cwd=rulesproj)
         tenx("new", "spec", "Rules spec", "--epic", "EPC-001",
              cwd=rulesproj)
+        strip_discipline(rulesproj)
         def rules_in(proj):
             d = json.loads(tenx("validate", "--json", cwd=proj).stdout)
             return {f["rule"] for k in ("errors", "warnings", "info")
@@ -633,6 +652,7 @@ def main() -> int:
         tenx("init", "--name", "gate", cwd=gateproj)
         tenx("new", "epic", "Gate epic", cwd=gateproj)
         tenx("new", "spec", "Gate spec", "--epic", "EPC-001", cwd=gateproj)
+        strip_discipline(gateproj)
         # blocked: no evidence, no tickets
         r = tenx("set", "SPC-001", "status", "complete", cwd=gateproj,
                  expect_rc=2)
@@ -658,12 +678,14 @@ def main() -> int:
               meta.get("status") == "complete", str(meta.get("status")))
         # --force bypass on a fresh spec
         tenx("new", "spec", "Force spec", "--epic", "EPC-001", cwd=gateproj)
+        strip_discipline(gateproj)
         r = tenx("set", "SPC-002", "status", "complete", "--force",
                  cwd=gateproj)
         check("gate --force bypasses",
               r.returncode == 0 and "--force used" in r.stderr, r.stderr)
         # evidence field path
         tenx("new", "spec", "Ev spec", "--epic", "EPC-001", cwd=gateproj)
+        strip_discipline(gateproj)
         tenx("set", "SPC-003", "evidence", "smoke green 2026-08-25",
              cwd=gateproj)
         tenx("changelog", "add", "ev work", "--ref", "SPC-003",
@@ -678,6 +700,7 @@ def main() -> int:
         cfg.write_text((cfg.read_text() if cfg.exists() else "")
                        + "\nevidence_gate: off\n")
         tenx("new", "spec", "Off spec", "--epic", "EPC-001", cwd=gateproj)
+        strip_discipline(gateproj)
         tenx("set", "SPC-004", "status", "complete", cwd=gateproj)
         meta = json.loads(tenx("show", "SPC-004", "--json",
                                cwd=gateproj).stdout)["meta"]
@@ -701,12 +724,13 @@ def main() -> int:
                    for f in d.get(k, [])}
         check("catalog covers emitted rules", emitted <= cat_ids,
               str(emitted - cat_ids))
-        check("catalog has 35 rules", len(cat) == 35, str(len(cat)))
+        check("catalog has 38 rules", len(cat) == 38, str(len(cat)))
 
         # ---- tenx review + archive ----
         tenx("new", "epic", "Review epic", cwd=scanproj)
         tenx("new", "spec", "Review spec", "--epic", "EPC-001",
              cwd=scanproj)
+        strip_discipline(scanproj)
         out = tenx("review", cwd=scanproj).stdout
         check("review empty queue message", "nothing awaits review" in out)
         tenx("ticket", "SPC-001", "SPC-001-T9", "in_review",
@@ -786,10 +810,15 @@ def main() -> int:
         probe = next((scanproj / ".tenx/specs").glob(
             "SPC-*-template-probe.md")).read_text()
         for sec in ("## Summary", "## Context and scope",
-                    "## Goals / non-goals", "## Design",
+                    "## Goals / non-goals", "## Requirements",
+                    "## Success criteria", "## Design",
                     "## Alternatives considered",
                     "## Cross-cutting concerns", "## Validation"):
             check(f"spec template has {sec!r}", sec in probe)
+        check("spec template carries FR/SC discipline markers",
+              "FR-001" in probe and "SC-001" in probe
+              and "NEEDS CLARIFICATION" in probe)
+        strip_discipline(scanproj)
         tenx("new", "epic", "Template probe epic", cwd=scanproj)
         eprobe = sorted((scanproj / ".tenx/epics").glob(
             "EPC-*-template-probe-epic.md"))[-1].read_text()
@@ -826,6 +855,7 @@ def main() -> int:
         ops_id = ops_epic.read_text().split("id: ")[1].split("\n")[0]
         tenx("new", "spec", "Ops P0 spec", "--epic", ops_id, cwd=scanproj)
         tenx("new", "spec", "Ops P1 spec", "--epic", ops_id, cwd=scanproj)
+        strip_discipline(scanproj)
         p0 = sorted((scanproj / ".tenx/specs").glob(
             "SPC-*-ops-p0-spec.md"))[-1]
         p1 = sorted((scanproj / ".tenx/specs").glob(
@@ -1011,6 +1041,7 @@ def main() -> int:
         # concurrent set on one artifact leaves it parseable (no corruption)
         tenx("new", "epic", "Conc epic", cwd=concproj)
         tenx("new", "spec", "Conc spec", "--epic", "EPC-001", cwd=concproj)
+        strip_discipline(concproj)
         cspec_file = sorted((concproj / ".tenx/specs").glob(
             "SPC-*-conc-spec.md"))[-1]
         cspec = cspec_file.read_text().split("id: ")[1].split("\n")[0]
@@ -1134,6 +1165,7 @@ def main() -> int:
         tenx("changelog", "add", "restore", cwd=docsproj)
         tenx("new", "epic", "Docs epic", cwd=docsproj)
         tenx("new", "spec", "Docs spec", "--epic", "EPC-001", cwd=docsproj)
+        strip_discipline(docsproj)
         # SPC-023-T3: completing a ticket-less spec is now an error, so
         # give the spec real tickets before the completion below.
         add_tickets(docsproj / ".tenx/specs/SPC-001-docs-spec.md")
@@ -1157,6 +1189,7 @@ def main() -> int:
               str(infos))
         # evidence gate requires a changelog entry referencing the artifact
         tenx("new", "spec", "Gated spec", "--epic", "EPC-001", cwd=docsproj)
+        strip_discipline(docsproj)
         tenx("log", "did gated work", "--ref", "SPC-002", cwd=docsproj)
         r = tenx("set", "SPC-002", "status", "complete", cwd=docsproj,
                  expect_rc=2)
@@ -1204,6 +1237,7 @@ def main() -> int:
         tenx("init", "--name", "gateproj", cwd=gateproj)
         tenx("new", "epic", "Gate epic", cwd=gateproj)
         tenx("new", "spec", "Gate spec", "--epic", "EPC-001", cwd=gateproj)
+        strip_discipline(gateproj)
         def _gitc(msg: str) -> None:
             # Commit in UTC so %aI renders the trailing 'Z' git emits on
             # UTC hosts — the exact shape Python 3.10's fromisoformat
@@ -1465,6 +1499,7 @@ def main() -> int:
         tenx("new", "epic", "Lock epic", cwd=lockproj)
         tenx("new", "spec", "Lock spec", "--epic", "EPC-001",
              cwd=lockproj)
+        strip_discipline(lockproj)
         holder_src = (
             "import sys, time\n"
             f"sys.path.insert(0, {str(Path(__file__).resolve().parent.parent / 'src')!r})\n"
@@ -1524,6 +1559,98 @@ def main() -> int:
         check("capabilities tool is tagged for both surfaces",
               next(c for c in _CAPS
                    if c["name"] == "capabilities")["surface"] == "both")
+
+        # ---- SPC-025 spec artifact discipline ----
+        disc = Path(tempfile.mkdtemp(prefix="tenx-disc-"))
+        try:
+            tenx("init", "--name", "disc", cwd=disc)
+            tenx("new", "epic", "Discipline epic", cwd=disc)
+            tenx("new", "spec", "Discipline spec", "--epic", "EPC-001",
+                 cwd=disc)
+            sp = next((disc / ".tenx" / "specs").glob("SPC-001-*.md"))
+            tpl = sp.read_text(encoding="utf-8")
+            check("T1: new spec template carries FR/SC structure",
+                  "## Requirements" in tpl and "## Success criteria" in tpl
+                  and "FR-001" in tpl and "SC-001" in tpl
+                  and "NEEDS CLARIFICATION" in tpl
+                  and "Given/When/Then" in tpl)
+            # draft with template markers must NOT trip the clarify rule
+            r = tenx("validate", "--json", cwd=disc)
+            check("T2: draft specs may carry clarify markers",
+                  "clarify-markers-open" not in r.stdout)
+            # controlled body: FR-001 covered, FR-002 uncovered,
+            # one clarify marker, one orphan ticket ref
+            fm = tpl.split("---", 2)[1]
+            new_spec = (
+                "---" + fm.rstrip("-\n").rstrip() + "\n"
+                "tickets:\n"
+                "  - id: SPC-001-T1\n"
+                "    title: \"[FR-001] do the thing\"\n"
+                "    status: todo\n"
+                "  - id: SPC-001-T2\n"
+                "    title: \"[FR-009] orphan\"\n"
+                "    status: todo\n"
+                "---\n\n"
+                "## Summary\n\nControlled.\n\n"
+                "## Requirements\n\n"
+                "- FR-001: The system MUST do the thing\n"
+                "- FR-002: The system MUST do the other thing "
+                "[NEEDS CLARIFICATION: which other thing?]\n\n"
+                "## Success criteria\n\n- SC-001: thing works\n\n"
+                "## Validation\n\nFR-001: Given x, When y, Then z.\n")
+            sp.write_text(new_spec, encoding="utf-8")
+            tenx("set", "SPC-001", "status", "in_progress", cwd=disc)
+            r = tenx("validate", "--json", cwd=disc, expect_rc=1)
+            check("T2: clarify marker in non-draft spec is an error",
+                  "clarify-markers-open" in r.stdout)
+            check("T3: uncovered FR-002 warned",
+                  "requirement-uncovered" in r.stdout
+                  and "FR-002" in r.stdout)
+            check("T3: covered FR-001 not flagged",
+                  "FR-001 has no ticket" not in r.stdout)
+            check("T3: orphan ticket ref reported",
+                  "requirement-orphan" in r.stdout and "FR-009" in r.stdout)
+            # converge: not converged, then --append covers FR-002
+            r = tenx("converge", "SPC-001", cwd=disc, expect_rc=1)
+            check("T4: converge reports NOT CONVERGED",
+                  "NOT CONVERGED" in r.stdout)
+            r = tenx("converge", "SPC-001", "--append", cwd=disc,
+                     expect_rc=1)
+            check("T4: converge --append creates ticket for FR-002",
+                  "SPC-001-T3" in r.stdout and "FR-002" in r.stdout)
+            # resolve marker, finish tickets -> CONVERGED + no-op
+            txt = sp.read_text(encoding="utf-8").replace(
+                " [NEEDS CLARIFICATION: which other thing?]", "")
+            sp.write_text(txt, encoding="utf-8")
+            for t in ("T1", "T2", "T3"):
+                tenx("ticket", "SPC-001", f"SPC-001-{t}", "done",
+                     cwd=disc)
+            before = sp.read_bytes()
+            r = tenx("converge", "SPC-001", "--append", cwd=disc)
+            check("T4: converge CONVERGED after tickets done",
+                  "CONVERGED" in r.stdout and "NOT CONVERGED" not in r.stdout)
+            check("T4: --append is byte-for-byte no-op when clean",
+                  sp.read_bytes() == before)
+            rj = tenx("converge", "SPC-001", "--json", cwd=disc)
+            check("T4: converge --json machine-readable",
+                  "\"converged\": true" in rj.stdout)
+            # legacy spec without FR markers: NO REQUIREMENTS, exit 0
+            legacy = disc / ".tenx" / "specs" / "SPC-002-legacy.md"
+            legacy.write_text(
+                "---\nid: SPC-002\ntype: spec\ntitle: Legacy\n"
+                "status: complete\nepic: EPC-001\n"
+                "created: 2026-01-01\nupdated: 2026-01-01\n---\n\n"
+                "## Summary\n\nOld-style prose spec, no FR ids.\n\n"
+                "## Validation\n\nIt shipped.\n",
+                encoding="utf-8")
+            r = tenx("converge", "SPC-002", cwd=disc)
+            check("T4: legacy spec reports NO REQUIREMENTS",
+                  "NO REQUIREMENTS" in r.stdout)
+        finally:
+            shutil.rmtree(disc, ignore_errors=True)
+
+        check("T5: capabilities catalog covers converge",
+              "converge" in {c["name"] for c in _CAPS})
 
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

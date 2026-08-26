@@ -213,9 +213,13 @@ engineering orgs plan work, so a fresh project starts world-class:
 - **epic** — OKR-style: Objective (who benefits, working backwards from the
   user), measurable **Key results**, Scope, **Non-goals**, Milestones.
 - **spec** — design-doc style: Summary, Context and scope, Goals/non-goals,
-  Design (with trade-offs), **Alternatives considered**, Cross-cutting
-  concerns (security/privacy/observability/testing), Tickets, Validation
-  (definition of done).
+  **Requirements** (numbered `FR-###`, one testable MUST each, unknowns
+  marked `[NEEDS CLARIFICATION: ...]`), **Success criteria** (measurable
+  `SC-###`), Design (with trade-offs), **Alternatives considered**,
+  Cross-cutting concerns (security/privacy/observability/testing), Tickets,
+  Validation (definition of done, Given/When/Then tied to FR ids).
+  `tenx validate` blocks non-draft specs with open clarify markers and
+  warns when an `FR-###` has no ticket; `tenx converge` reports coverage.
 - **convention** — one imperative Rule, the Why (failure it prevents),
   Applies-to, and a good/bad example.
 - **doc** — Purpose plus a shape that fits: architecture/system, a decision
@@ -244,6 +248,7 @@ tenx set <ID> status complete [--force]  # gated: needs clean validate + done ti
 tenx ticket SPC-001 SPC-001-T2 done
 tenx validate [--fix] [--json]   # lint the SDLC; --fix rebuilds the convention index
 tenx validate --list-rules [--json]  # print the rule catalog (no linting)
+tenx converge SPC-001 [--json] [--append]  # requirement coverage (FR-### vs tickets) before completion
 tenx log "implemented webhook handler" --ref SPC-001 --type progress
 tenx history [--limit 20] [--json]
 tenx next [--json]               # prioritized work queue (the self-improving loop)

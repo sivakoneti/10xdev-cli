@@ -26,10 +26,12 @@ touching `src/tenx/`.
                      importable)
       templates.py   artifact body templates, config/harness-README templates,
                      bundled skill texts
-      rules.py       validation engine: RULE_CATALOG (35 rules) + _rule_*
+      rules.py       validation engine: RULE_CATALOG (38 rules) + _rule_*
                      functions + convention index rebuild; `tenx validate
                      --list-rules` prints the catalog; git-aware rules
-                     (commit-without-writeback, agent-surface-stale)
+                     (commit-without-writeback, agent-surface-stale);
+                     spec-discipline rules (clarify-markers-open,
+                     requirement-uncovered, requirement-orphan)
       context.py     context packet builder (operator/agent modes, md/json,
                      --budget truncation) + the operating PROTOCOL text
       nextup.py      prioritized work-queue derivation for `tenx next`
@@ -73,6 +75,9 @@ touching `src/tenx/`.
                      uv/pipx upgrade detection)
       changelog.py   `tenx changelog`: Keep-a-Changelog CHANGELOG.md discipline
                      (show/add/release) + docs-drift helpers for the rules/gate
+      converge.py    `tenx converge`: deterministic spec-completion convergence
+                     (FR-### requirements vs tickets; --append adds missing
+                     tickets; append-only, no-op when clean)
       locking.py     per-project advisory lock (.tenx/.lock) + atomic_write_text;
                      serializes mutating commands so concurrent agents are safe
 
