@@ -26,9 +26,10 @@ touching `src/tenx/`.
                      importable)
       templates.py   artifact body templates, config/harness-README templates,
                      bundled skill texts
-      rules.py       validation engine: RULE_CATALOG (33 rules) + _rule_*
+      rules.py       validation engine: RULE_CATALOG (35 rules) + _rule_*
                      functions + convention index rebuild; `tenx validate
-                     --list-rules` prints the catalog
+                     --list-rules` prints the catalog; git-aware rules
+                     (commit-without-writeback, agent-surface-stale)
       context.py     context packet builder (operator/agent modes, md/json,
                      --budget truncation) + the operating PROTOCOL text
       nextup.py      prioritized work-queue derivation for `tenx next`
@@ -37,7 +38,10 @@ touching `src/tenx/`.
       triage.py      `tenx triage`: act-now/watch/healthy classification + the
                      single top human escalation
       gate.py        enforced evidence gate (clean validate + done tickets +
-                     linked evidence + changelog entry) on spec/epic -> complete
+                     linked evidence + changelog entry across all sections)
+                     on spec/epic -> complete, plus commit_check: the
+                     staged-change freshness gate behind `tenx gate
+                     commit-check` (commit_gate: on|warn|off)
       activity.py    append-only JSONL activity log + throttled session entries
       execbrief.py   `tenx exec` autonomous execution brief builder
       adapters.py    data-driven adapter registry (~29 agent harnesses:
@@ -47,17 +51,23 @@ touching `src/tenx/`.
                      managed md blocks (tenx:begin/end, hardened HARD-RULES
                      mandate), cursor/cline/kiro managed files, bootstrap
                      snippet, DSH agent-preset generator (persona-mandated
-                     tenx loop), and the git pre-commit gate (runs
-                     `tenx validate`, blocks commits on errors — the
-                     universal harness-agnostic backstop)
+                     tenx loop), find_stale_surfaces (drift detector shared
+                     by doctor + validate), and the git pre-commit gate
+                     (runs `tenx validate` + `tenx gate commit-check`,
+                     timeout-wrapped and fail-open on tenx failure;
+                     worktree-aware: installs into the common hooks dir)
       skills.py      skill installation (.claude/skills/<name>/SKILL.md layout)
       scan.py        `tenx scan`: stack/test/CI/agent-file census of the code
                      repo; --write upserts a codebase-map DOC
       sync.py        `tenx sync push|pull`: spec tickets <-> GitHub Issues
                      ([SPC-xxx-Tn] markers, label, token chain incl.
                      ~/.git-credentials)
-      mcp.py         `tenx mcp`: stdio MCP JSON-RPC server exposing 13 tools;
+      mcp.py         `tenx mcp`: stdio MCP JSON-RPC server exposing 14 tools;
+                     mutating tools take the same harness lock as the CLI;
                      `tenx mcp install` writes managed .mcp.json
+      capabilities.py capability catalog (every command/tool + when-to-use)
+                     behind `tenx capabilities`, the tenx_capabilities MCP
+                     tool, and a context-packet pointer
       update.py      `tenx update [--check]`: self-update (GitHub Releases API
                      -> branch pyproject.toml fallback; offline-tolerant;
                      uv/pipx upgrade detection)

@@ -92,7 +92,19 @@ def parse_changelog(text: str) -> tuple[str, list[ChangelogSection]]:
         if me and cur_type:
             cur.entries.setdefault(cur_type, []).append(me.group("text"))
             continue
-        # non-entry lines inside a section are ignored on re-render
+        # SPC-023-T13: round-trip preservation. Lines we do not model are
+        # kept verbatim under the "" bucket instead of being dropped:
+        #  * bullet entries appearing before any `### Type` heading
+        #  * indented sub-bullets/continuations (attached to the last entry)
+        #  * prose lines inside a section
+        if line.startswith((" ", "\t")):
+            bucket = cur.entries.get(cur_type or "") or []
+            if bucket:
+                bucket[-1] = bucket[-1] + "\n" + line
+                cur.entries[cur_type or ""] = bucket
+                continue
+        if line.strip():
+            cur.entries.setdefault("", []).append(line.rstrip())
     return "\n".join(preamble_lines).rstrip("\n"), sections
 
 
@@ -107,15 +119,24 @@ def render(preamble: str, sections: list[ChangelogSection]) -> str:
             head += f" - {sec.date}"
         out.append(head)
         out.append("")
-        # emit types in canonical order, then any unknown types
+        # SPC-023-T13: verbatim lines first (heading-less entries, prose),
+        # then types in canonical order, then any unknown types.
+        raw = sec.entries.get("") or []
+        if raw:
+            out.extend(raw)
+            out.append("")
         ordered = [t for t in TYPES if t in sec.entries]
-        ordered += [t for t in sec.entries if t not in TYPES]
+        ordered += [t for t in sec.entries if t not in TYPES and t != ""]
         for t in ordered:
             msgs = sec.entries.get(t) or []
             if not msgs:
                 continue
             out.append(f"### {t}")
-            out.extend(f"- {m}" for m in msgs)
+            for m in msgs:
+                # entries may carry indented sub-lines verbatim
+                first, *rest = m.split("\n")
+                out.append(f"- {first}")
+                out.extend(rest)
             out.append("")
     text = "\n".join(out).rstrip("\n") + "\n"
     return text

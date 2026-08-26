@@ -37,16 +37,23 @@ ticket by ticket, and write back every state change to the harness.
 3. If a ticket is blocked, mark it `blocked` and log why; move to the next.
 
 ## When all tickets are done
-1. `tenx set {spec_id} status complete`
-2. `tenx validate` — fix every error and warning you introduced.
-3. Commit the code repo, then commit the harness changes (they are the
-   audit trail of what you did).
+1. Document the shipped work (docs-sync, enforced):
+   `tenx changelog add "<what shipped>" --ref {spec_id}`
+2. `tenx set {spec_id} status complete` — the evidence gate checks that
+   every ticket is done, that work is logged/evidenced, and that the
+   changelog has an entry. If it blocks, fix the reason it names; use
+   `--force` only on explicit human instruction (it is audit-logged).
+3. `tenx validate` — fix every error and warning you introduced.
+4. Commit the code repo, then commit the harness changes (they are the
+   audit trail of what you did). The pre-commit gate re-runs validate and
+   warns/blocks when staged code has no write-back behind it.
 
 ## Hard rules
 - Never mark the spec complete while any ticket is not done — the
   validator derives spec status from tickets and will flag drift.
 - Never skip the write-back: the activity log is how the next session
-  (human or agent) knows what happened.
+  (human or agent) knows what happened. Commits of unlogged code are
+  flagged by the gate.
 - If the spec is ambiguous, stop and record the question in the log
   instead of guessing silently.
 

@@ -36,7 +36,7 @@ TYPE_DIRS = {
 }
 
 STATUSES = ["draft", "in_progress", "in_review", "complete", "blocked", "archived"]
-TICKET_STATUSES = ["todo", "in_progress", "in_review", "done"]
+TICKET_STATUSES = ["todo", "in_progress", "in_review", "done", "blocked"]
 # Business priority tiers (optional). P0 = must move forward no matter
 # what; unset = normal queue order. Mirrors priority-bucket systems
 # used to manage fleets of agents.
@@ -142,7 +142,9 @@ def load_artifact(path: Path) -> Artifact:
     meta, body, err = load_frontmatter(text)
     if meta is None:
         return Artifact(path=path, meta={}, body=body, parse_error=err)
-    return Artifact(path=path, meta=meta, body=body, parse_error=None)
+    # SPC-023-T12: keep partial parses usable, but carry the parser's
+    # complaint so validate can surface it instead of losing it.
+    return Artifact(path=path, meta=meta, body=body, parse_error=err)
 
 
 def load_harness(project_root: Path) -> Harness:
@@ -232,6 +234,8 @@ def derived_status(artifact: Artifact) -> str | None:
     - all tickets done      -> complete
     - any ticket in_progress-> in_progress (work underway)
     - otherwise             -> draft (planned, not started)
+
+    `blocked` tickets count as not-done; watchdog surfaces them separately.
     """
     tickets = artifact.tickets
     if not tickets:

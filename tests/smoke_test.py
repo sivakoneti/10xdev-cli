@@ -57,6 +57,12 @@ def main() -> int:
     proj = tmp / "proj"
     proj.mkdir()
     (proj / "package.json").write_text('{"name":"t","scripts":{"test":"vitest"}}')
+    # a real project is a git repo; doctor enforcement expects the gate
+    subprocess.run(["git", "init", "-q", str(proj)], check=True)
+    subprocess.run(["git", "config", "user.email", "t@t.t"], cwd=proj,
+                   check=True)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=proj,
+                   check=True)
     try:
         print("== init ==")
         tenx("init", "--bootstrap", "--description", "smoke", cwd=proj)
@@ -88,10 +94,17 @@ def main() -> int:
         tenx("set", "SPC-001", "status", "in_progress", cwd=proj)
         tenx("validate", cwd=proj)  # clean
         tenx("set", "SPC-001", "status", "complete", "--force", cwd=proj)
-        out = tenx("validate", "--json", cwd=proj, expect_rc=0).stdout
-        warns = json.loads(out)["warnings"]
-        check("derived-status-drift flagged",
-              any(w["rule"] == "derived-status-drift" for w in warns), str(warns))
+        # SPC-023-T3: completing a spec whose tickets are not all done is
+        # now a validation ERROR (evidence-gate bypass), not a warning.
+        out = tenx("validate", "--json", cwd=proj, expect_rc=1).stdout
+        errs = json.loads(out)["errors"]
+        check("derived-status-drift blocks forced incomplete completion",
+              any(e["rule"] == "derived-status-drift" for e in errs), str(errs))
+        # SPC-023-T7: the forced completion left an audit trail
+        hist = json.loads(tenx("history", "--json", cwd=proj).stdout)
+        check("forced completion is audit-logged",
+              any(e.get("type") == "decision" and "--force" in e.get("message", "")
+                  for e in hist))
         tenx("set", "SPC-001", "status", "in_progress", cwd=proj)
 
         print("== errors ==")
@@ -107,7 +120,13 @@ def main() -> int:
         tenx("log", "did work", "--ref", "SPC-001", cwd=proj)
         out = tenx("history", "--json", cwd=proj).stdout
         entries = json.loads(out)
-        check("log entry", len(entries) == 1 and entries[0]["ref"] == "SPC-001")
+        # SPC-023-T6: ticket moves also auto-append entries, so filter.
+        check("log entry",
+              any(e.get("message") == "did work" and e.get("ref") == "SPC-001"
+                  for e in entries))
+        check("ticket move auto-logged (T6)",
+              any(e.get("type") == "progress" and "SPC-001-T1" in e.get("message", "")
+                  for e in entries))
         out = tenx("next", "--json", cwd=proj).stdout
         actions = json.loads(out)
         check("next leads with open ticket",
@@ -336,6 +355,12 @@ def main() -> int:
         pm.mkdir()
         app.mkdir()
         (app / "package.json").write_text('{"name":"app"}')
+        for repo in (pm, app):
+            subprocess.run(["git", "init", "-q", str(repo)], check=True)
+            subprocess.run(["git", "config", "user.email", "t@t.t"],
+                           cwd=repo, check=True)
+            subprocess.run(["git", "config", "user.name", "t"],
+                           cwd=repo, check=True)
         tenx("init", "--standalone", "--code-root", str(app),
              "--name", "pm", cwd=pm)
         check("tenxlink written", (app / ".tenxlink").is_file())
@@ -347,9 +372,11 @@ def main() -> int:
         check("discovery via .tenxlink",
               any(i["id"] == "EPC-001" for i in json.loads(out)))
         # hooks land in the CODE repo, not the PM repo
-        tenx("hook", "install", "--agent", "all", cwd=pm)
+        tenx("hook", "install", "--agent", "all", "--git", cwd=pm)
         check("claude hook in code repo",
               (app / ".claude/settings.json").is_file())
+        check("git gate in code repo",
+              (app / ".git/hooks/pre-commit").is_file())
         check("AGENTS.md in code repo", (app / "AGENTS.md").is_file())
         check("no AGENTS.md in PM repo", not (pm / "AGENTS.md").exists())
         out = tenx("context", "--mode", "agent", cwd=app).stdout
@@ -660,7 +687,7 @@ def main() -> int:
                    for f in d.get(k, [])}
         check("catalog covers emitted rules", emitted <= cat_ids,
               str(emitted - cat_ids))
-        check("catalog has 33 rules", len(cat) == 33, str(len(cat)))
+        check("catalog has 35 rules", len(cat) == 35, str(len(cat)))
 
         # ---- tenx review + archive ----
         tenx("new", "epic", "Review epic", cwd=scanproj)
@@ -683,9 +710,15 @@ def main() -> int:
         # archive guard: open ticket blocks
         tenx("ticket", "SPC-001", "SPC-001-T10", "todo",
              "--title", "open", cwd=scanproj)
-        r = tenx("archive", "EPC-001", cwd=scanproj, expect_rc=2)
+        # SPC-023-T14: approval is checked before anything else
+        r = tenx("archive", "EPC-001", "--yes", cwd=scanproj, expect_rc=2)
+        check("archive refuses without --approved-by",
+              "approved-by" in r.stderr, r.stderr[:200])
+        r = tenx("archive", "EPC-001", "--approved-by", "smoke",
+                 cwd=scanproj, expect_rc=2)
         check("archive refuses open tickets", r.returncode == 2)
-        tenx("archive", "EPC-001", "--yes", cwd=scanproj)
+        tenx("archive", "EPC-001", "--yes", "--approved-by", "smoke",
+             cwd=scanproj)
         out = tenx("list", "epic", "--json", cwd=scanproj).stdout
         check("archive sets epic archived",
               any(e["id"] == "EPC-001" and e["status"] == "archived"
@@ -1087,6 +1120,11 @@ def main() -> int:
         tenx("changelog", "add", "restore", cwd=docsproj)
         tenx("new", "epic", "Docs epic", cwd=docsproj)
         tenx("new", "spec", "Docs spec", "--epic", "EPC-001", cwd=docsproj)
+        # SPC-023-T3: completing a ticket-less spec is now an error, so
+        # give the spec real tickets before the completion below.
+        add_tickets(docsproj / ".tenx/specs/SPC-001-docs-spec.md")
+        tenx("ticket", "SPC-001", "SPC-001-T1", "done", cwd=docsproj)
+        tenx("ticket", "SPC-001", "SPC-001-T2", "done", cwd=docsproj)
         tenx("log", "did docs work", "--ref", "SPC-001", cwd=docsproj)
         # backdate the release so the completed spec counts as "since release"
         tenx("changelog", "release", "v9.9.8", cwd=docsproj)
@@ -1141,6 +1179,253 @@ def main() -> int:
         n_session = sum(1 for e in entries if e.get("type") == "session")
         check("session entries throttled to one", n_session == 1,
               f"got {n_session}")
+
+        # ---- SPC-023 enforcement teeth ----
+        gateproj = Path(tempfile.mkdtemp(prefix="tenx-gate-"))
+        subprocess.run(["git", "init", "-q", str(gateproj)], check=True)
+        subprocess.run(["git", "config", "user.email", "t@t.t"],
+                       cwd=gateproj, check=True)
+        subprocess.run(["git", "config", "user.name", "t"],
+                       cwd=gateproj, check=True)
+        tenx("init", "--name", "gateproj", cwd=gateproj)
+        tenx("new", "epic", "Gate epic", cwd=gateproj)
+        tenx("new", "spec", "Gate spec", "--epic", "EPC-001", cwd=gateproj)
+        subprocess.run(["git", "add", "-A"], cwd=gateproj, check=True)
+        subprocess.run(["git", "commit", "-qm", "baseline"],
+                       cwd=gateproj, check=True)
+
+        # T5: blocked is a legal ticket status
+        tenx("ticket", "SPC-001", "SPC-001-T1", "blocked", cwd=gateproj)
+        out = tenx("show", "SPC-001", "--json", cwd=gateproj).stdout
+        check("ticket status blocked accepted",
+              json.loads(out)["meta"]["tickets"][0]["status"] == "blocked")
+        tenx("ticket", "SPC-001", "SPC-001-T1", "todo", cwd=gateproj)
+
+        # T6: ticket moves auto-append activity entries
+        hist = json.loads(tenx("history", "--json", cwd=gateproj).stdout)
+        check("ticket moves are auto-logged",
+              sum(1 for e in hist if "SPC-001-T1" in e.get("message", "")
+                  and e.get("type") == "progress") >= 2)
+
+        # T2: git-aware validate — sneaky code commit gets flagged.
+        # The matcher counts any work entry within +/-commit_window_hours
+        # of a commit as write-back, so backdate the entries created
+        # above out of the window to keep the test deterministic.
+        import datetime as _dt2
+        act = gateproj / ".tenx/log/activity.jsonl"
+        old_ts = (_dt2.datetime.now(_dt2.timezone.utc)
+                  - _dt2.timedelta(hours=10)).isoformat()
+        aged = []
+        for ln in act.read_text().splitlines():
+            if ln.strip():
+                rec = json.loads(ln)
+                rec["ts"] = old_ts
+                aged.append(json.dumps(rec))
+        act.write_text("\n".join(aged) + "\n")
+
+        (gateproj / "src").mkdir(exist_ok=True)
+        (gateproj / "src" / "sneak.py").write_text("x = 1\n")
+        subprocess.run(["git", "add", "src/sneak.py"], cwd=gateproj,
+                       check=True)
+        subprocess.run(["git", "commit", "-qm", "sneaky"],
+                       cwd=gateproj, check=True)
+        out = tenx("validate", "--json", cwd=gateproj).stdout
+        warns = json.loads(out)["warnings"]
+        check("commit-without-writeback flags sneaky commit",
+              any(w["rule"] == "commit-without-writeback" for w in warns),
+              str(warns)[:300])
+        tenx("log", "added sneak.py", "--ref", "SPC-001", cwd=gateproj)
+        out = tenx("validate", "--json", cwd=gateproj).stdout
+        warns = json.loads(out)["warnings"]
+        check("write-back clears commit-without-writeback",
+              not any(w["rule"] == "commit-without-writeback"
+                      for w in warns))
+
+        # T4: staged-change freshness gate. First commit the documented
+        # state so HEAD is newer than every activity entry; a fresh
+        # unlogged staged change must then trip the gate. Sleep so the
+        # commit's second-granularity timestamp is strictly newer than
+        # the entry logged above.
+        import time as _t2
+        _t2.sleep(1.1)
+        (gateproj / "src" / "sneak.py").write_text("x = 2\n")
+        subprocess.run(["git", "add", "src/sneak.py"], cwd=gateproj,
+                       check=True)
+        subprocess.run(["git", "commit", "-qm", "documented change"],
+                       cwd=gateproj, check=True)
+        (gateproj / "src" / "sneak.py").write_text("x = 3\n")
+        subprocess.run(["git", "add", "src/sneak.py"], cwd=gateproj,
+                       check=True)
+        r = tenx("gate", "commit-check", cwd=gateproj)
+        check("commit-check default mode warns but passes",
+              r.returncode == 0)
+        (gateproj / ".tenx/config.yaml").open("a").write(
+            "\ncommit_gate: on\n")
+        tenx("gate", "commit-check", cwd=gateproj, expect_rc=1)
+        check("commit-check mode=on blocks unlogged code", True)
+        # process-only staged changes never trip the gate
+        subprocess.run(["git", "reset", "-q"], cwd=gateproj, check=True)
+        (gateproj / ".tenx" / "notes.txt").write_text("process only\n")
+        subprocess.run(["git", "add", ".tenx/notes.txt"], cwd=gateproj,
+                       check=True)
+        tenx("gate", "commit-check", cwd=gateproj)
+        check("commit-check ignores process-only staging", True)
+        # write-back clears the gate for the code change
+        tenx("log", "tweaked sneak.py", "--ref", "SPC-001",
+             cwd=gateproj)
+        subprocess.run(["git", "add", "src/sneak.py"], cwd=gateproj,
+                       check=True)
+        tenx("gate", "commit-check", cwd=gateproj)
+        check("commit-check passes after write-back", True)
+        subprocess.run(["git", "commit", "-qm", "documented tweak"],
+                       cwd=gateproj, check=True)
+
+        # T1: doctor enforcement audit + --json
+        hook = gateproj / ".git/hooks/pre-commit"
+        tenx("hook", "install", "--git", cwd=gateproj)
+        check("hook install creates the git gate", hook.is_file())
+        hook.unlink()
+        r = tenx("doctor", cwd=gateproj, expect_rc=1)
+        check("doctor flags missing git gate",
+              "pre-commit gate MISSING" in r.stdout
+              and "tenx hook install --git" in r.stdout, r.stdout[-300:])
+        dout = json.loads(tenx("doctor", "--json", cwd=gateproj,
+                               expect_rc=1).stdout)
+        check("doctor --json reports enforcement problems",
+              any("pre-commit" in p for p
+                  in dout["enforcement_problems"]))
+        tenx("hook", "install", "--git", cwd=gateproj)
+        check("hook install restores the gate", hook.is_file())
+
+        # T8: stale managed surfaces are flagged and fixable
+        claudemd = gateproj / "CLAUDE.md"
+        claudemd.write_text(claudemd.read_text().replace(
+            "### Hard rules (non-negotiable)", "### Old rules"))
+        out = tenx("validate", "--json", cwd=gateproj).stdout
+        warns = json.loads(out)["warnings"]
+        check("agent-surface-stale flags stale CLAUDE.md",
+              any(w["rule"] == "agent-surface-stale" for w in warns))
+        tenx("hook", "install", "--agent", "all", cwd=gateproj)
+        out = tenx("validate", "--json", cwd=gateproj).stdout
+        warns = json.loads(out)["warnings"]
+        check("hook install --agent all clears staleness",
+              not any(w["rule"] == "agent-surface-stale" for w in warns))
+
+        # T9: worktree installs land in the common hooks dir
+        wt = gateproj.parent / (gateproj.name + "-wt")
+        subprocess.run(["git", "worktree", "add", str(wt), "HEAD"],
+                       cwd=gateproj, capture_output=True)
+        if wt.is_dir():
+            hook.unlink()
+            tenx("hook", "install", "--git", cwd=wt)
+            check("worktree install restores common-dir gate",
+                  hook.is_file())
+            subprocess.run(["git", "worktree", "remove", "--force",
+                            str(wt)], cwd=gateproj, capture_output=True)
+
+        # T7: gate escapes leave an audit trail
+        r = tenx("set", "SPC-001", "status", "complete", cwd=gateproj,
+                 expect_rc=2)
+        hist = json.loads(tenx("history", "--json", cwd=gateproj).stdout)
+        check("gate block is logged as blocker",
+              any(e.get("type") == "blocker" and "SPC-001" in str(e)
+                  for e in hist))
+        tenx("set", "SPC-001", "status", "complete", "--force",
+             cwd=gateproj)
+        hist = json.loads(tenx("history", "--json", cwd=gateproj).stdout)
+        check("forced completion is logged as decision",
+              any(e.get("type") == "decision" and "force" in str(e).lower()
+                  for e in hist))
+        tenx("set", "SPC-001", "status", "draft", cwd=gateproj)
+
+        # T14: archive requires explicit approval
+        r = tenx("archive", "EPC-001", cwd=gateproj, expect_rc=2)
+        check("archive refused without --approved-by",
+              "approved-by" in r.stderr, r.stderr[:200])
+
+        # T14: changelog entries in released sections satisfy the gate
+        tenx("ticket", "SPC-001", "SPC-001-T1", "done", cwd=gateproj)
+        tenx("changelog", "add", "shipped gate work", "--ref", "SPC-001",
+             cwd=gateproj)
+        tenx("changelog", "release", "0.1.0", cwd=gateproj)
+        tenx("set", "SPC-001", "status", "complete", cwd=gateproj)
+        out = tenx("show", "SPC-001", "--json", cwd=gateproj).stdout
+        check("released-section changelog entry passes the gate",
+              json.loads(out)["meta"]["status"] == "complete")
+        tenx("archive", "EPC-001", "--approved-by", "smoke-test",
+             "--yes", cwd=gateproj)
+        hist = json.loads(tenx("history", "--json", cwd=gateproj).stdout)
+        check("archive records its approver",
+              any("approved by smoke-test" in e.get("message", "")
+                  for e in hist))
+        shutil.rmtree(gateproj, ignore_errors=True)
+
+        # T11: MCP mutating tools take the harness lock
+        from tenx.mcp import _tooldefs as _td2
+        lockproj = Path(tempfile.mkdtemp(prefix="tenx-lock-"))
+        tenx("init", "--name", "lockproj", cwd=lockproj)
+        tenx("new", "epic", "Lock epic", cwd=lockproj)
+        tenx("new", "spec", "Lock spec", "--epic", "EPC-001",
+             cwd=lockproj)
+        holder_src = (
+            "import sys, time\n"
+            f"sys.path.insert(0, {str(Path(__file__).resolve().parent.parent / 'src')!r})\n"
+            "from pathlib import Path\n"
+            "from tenx.locking import harness_lock\n"
+            f"with harness_lock(Path({str(lockproj)!r})): time.sleep(3)\n")
+        holder = subprocess.Popen([sys.executable, "-c", holder_src])
+        import time as _time
+        _time.sleep(0.8)
+        os.environ["TENX_LOCK_TIMEOUT"] = "1"
+        try:
+            ticket_tool = next(t for t in _td2()
+                               if t["name"] == "tenx_ticket")
+            _text, lrc = ticket_tool["handler"](
+                {"root": str(lockproj), "spec": "SPC-001",
+                 "ticket": "SPC-001-T1", "status": "in_progress"})
+            check("MCP mutating tool honors the harness lock", lrc == 2,
+                  f"rc={lrc}")
+        finally:
+            os.environ.pop("TENX_LOCK_TIMEOUT", None)
+            holder.wait(timeout=10)
+        shutil.rmtree(lockproj, ignore_errors=True)
+
+        # T12: yamlite fallback hardening
+        from tenx import yamlite as _yl
+        _saved_backend = _yl._pyyaml
+        _yl._pyyaml = None
+        try:
+            d = _yl.yamlite_load("tags:\n- a\n- b\nname: x")
+            check("yamlite parses zero-indent lists",
+                  d == {"tags": ["a", "b"], "name": "x"}, str(d))
+            probs: list[str] = []
+            d = _yl.yamlite_load("name: x\n%%%garbage", probs)
+            check("yamlite reports unparseable lines",
+                  d == {"name": "x"} and len(probs) == 1, str(probs))
+        finally:
+            _yl._pyyaml = _saved_backend
+
+        # T13: changelog round-trip preserves unmodeled content
+        from tenx.changelog import parse_changelog as _pc, render as _rnd
+        _cl_text = ("# Changelog\n\n## [Unreleased]\n\n"
+                    "- heading-less entry\n\n### Added\n\n"
+                    "- feature X\n  - sub-bullet\n")
+        _p1, _s1 = _pc(_cl_text)
+        _o1 = _rnd(_p1, _s1)
+        _p2, _s2 = _pc(_o1)
+        check("changelog round-trip is stable and lossless",
+              _o1 == _rnd(_p2, _s2)
+              and "- heading-less entry" in _o1
+              and "  - sub-bullet" in _o1)
+
+        # T15: catalog completeness + doctor --json shape
+        from tenx.capabilities import CAPABILITIES as _CAPS
+        _names = {c["name"] for c in _CAPS}
+        check("capabilities catalog covers init and gate",
+              {"init", "gate", "capabilities"} <= _names, str(_names))
+        check("capabilities tool is tagged for both surfaces",
+              next(c for c in _CAPS
+                   if c["name"] == "capabilities")["surface"] == "both")
 
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

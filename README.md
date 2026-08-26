@@ -93,7 +93,8 @@ files and the tooling is one shell command that prints text. Any harness
 with a terminal tool can use 100% of it.
 
 The harness layer follows OpenDesign's agent-adapter architecture
-(`docs/agent-adapters.md`): **adapters are data, not code**. Each harness
+(documented in the `src/tenx/adapters.py` module docstring): **adapters
+are data, not code**. Each harness
 is one declarative record in `src/tenx/adapters.py` (bins to probe,
 auto-loaded instruction files, hook mechanism, skills dir); a generic
 engine installs and detects from those fields. Adding a harness is a
@@ -318,12 +319,14 @@ tenx mcp install               # writes managed .mcp.json (Claude Code)
 #   command: tenx   args: ["mcp"]
 ```
 
-Exposed tools: `tenx_context`, `tenx_next`, `tenx_status`, `tenx_show`,
-`tenx_list`, `tenx_ticket`, `tenx_log`, `tenx_validate`, `tenx_scan`,
-`tenx_exec`. Each maps onto the same code path as the CLI command, so
-output and exit semantics match exactly. The server is fault-isolated:
-a bad tool call or malformed line returns an error result and keeps
-serving.
+Exposed tools (14): `tenx_context`, `tenx_next`, `tenx_watchdog`,
+`tenx_triage`, `tenx_status`, `tenx_show`, `tenx_list`, `tenx_ticket`,
+`tenx_log`, `tenx_validate`, `tenx_scan`, `tenx_exec`, `tenx_changelog`,
+`tenx_capabilities`. Each maps onto the same code path as the CLI
+command, so output and exit semantics match exactly; mutating tools
+also take the same per-project advisory lock as the CLI. The server is
+fault-isolated: a bad tool call or malformed line returns an error
+result and keeps serving.
 
 ### Multiplayer: sync tickets to GitHub Issues
 

@@ -96,8 +96,19 @@ def _inline_list(raw: str) -> list[Any]:
     return [_scalar(p) for p in parts if p.strip()]
 
 
-def yamlite_load(text: str) -> dict[str, Any]:
-    """Parse the YAML subset used by tenx frontmatter."""
+def yamlite_load(text: str,
+                 problems: list[str] | None = None) -> dict[str, Any]:
+    """Parse the YAML subset used by tenx frontmatter.
+
+    If `problems` is given, lines the fallback parser cannot understand
+    are reported there instead of being silently dropped (SPC-023-T12:
+    silent data loss is worse than a visible error).
+    """
+    def skip(raw: str) -> None:
+        if problems is not None and raw.strip():
+            problems.append(f"line not understood by the fallback parser: "
+                            f"{raw.strip()[:80]!r}")
+
     root: dict[str, Any] = {}
     lines = text.splitlines()
     i = 0
@@ -108,11 +119,13 @@ def yamlite_load(text: str) -> dict[str, Any]:
             i += 1
             continue
         if line.startswith(" "):
-            # Unexpected indentation at top level; skip defensively.
+            # Unexpected indentation at top level.
+            skip(line)
             i += 1
             continue
         m = re.match(r"^([A-Za-z0-9_.-]+):(.*)$", line)
         if not m:
+            skip(line)
             i += 1
             continue
         key, rest = m.group(1), m.group(2).strip()
@@ -120,7 +133,9 @@ def yamlite_load(text: str) -> dict[str, Any]:
             root[key] = _inline_list(rest) if rest.startswith("[") else _scalar(rest)
             i += 1
             continue
-        # Block value: collect indented lines.
+        # Block value: collect indented lines. YAML also allows list items
+        # at the SAME indent as their key (`key:\n- item`), so accept
+        # indent-0 lines that start a list item (SPC-023-T12).
         block: list[str] = []
         i += 1
         while i < n:
@@ -130,15 +145,16 @@ def yamlite_load(text: str) -> dict[str, Any]:
                 i += 1
                 continue
             indent = len(nxt) - len(nxt.lstrip(" "))
-            if indent == 0:
+            if indent == 0 and not nxt.lstrip().startswith("- "):
                 break
             block.append(nxt)
             i += 1
-        root[key] = _parse_block(block)
+        root[key] = _parse_block(block, problems)
     return root
 
 
-def _parse_block(block: list[str]) -> Any:
+def _parse_block(block: list[str],
+                 problems: list[str] | None = None) -> Any:
     # Trim common indent.
     items = [b for b in block if b.strip()]
     if not items:
@@ -147,11 +163,12 @@ def _parse_block(block: list[str]) -> Any:
     pad = min(indents)
     block = [b[pad:] if b.strip() else "" for b in block]
     if block and any(b.lstrip().startswith("- ") or b.strip() == "-" for b in block if b.strip()):
-        return _parse_list(block)
-    return _parse_map(block)
+        return _parse_list(block, problems)
+    return _parse_map(block, problems)
 
 
-def _parse_list(block: list[str]) -> list[Any]:
+def _parse_list(block: list[str],
+                problems: list[str] | None = None) -> list[Any]:
     out: list[Any] = []
     cur: dict[str, Any] | None = None
     for raw in block:
@@ -172,13 +189,19 @@ def _parse_list(block: list[str]) -> list[Any]:
             m = re.match(r"^([A-Za-z0-9_.-]+):(.*)$", s)
             if m:
                 cur[m.group(1)] = _scalar(m.group(2))
-        # stray continuation lines outside an item are ignored
+            elif problems is not None:
+                problems.append(f"list continuation not understood: "
+                                f"{s[:80]!r}")
+        elif problems is not None:
+            problems.append(f"list line outside any item not understood: "
+                            f"{s[:80]!r}")
     if cur is not None:
         out.append(cur)
     return out
 
 
-def _parse_map(block: list[str]) -> dict[str, Any]:
+def _parse_map(block: list[str],
+               problems: list[str] | None = None) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for raw in block:
         if not raw.strip():
@@ -186,6 +209,9 @@ def _parse_map(block: list[str]) -> dict[str, Any]:
         m = re.match(r"^([A-Za-z0-9_.-]+):(.*)$", raw.strip())
         if m:
             out[m.group(1)] = _scalar(m.group(2))
+        elif problems is not None:
+            problems.append(f"map line not understood: "
+                            f"{raw.strip()[:80]!r}")
     return out
 
 
@@ -203,7 +229,14 @@ def load_frontmatter(text: str) -> tuple[dict[str, Any] | None, str, str | None]
         except Exception as exc:  # pragma: no cover
             return None, body, f"invalid YAML frontmatter: {exc}"
     try:
-        return yamlite_load(fm), body, None
+        problems: list[str] = []
+        meta = yamlite_load(fm, problems)
+        if problems:
+            # SPC-023-T12: keep the partial parse BUT make the loss
+            # visible — silent data loss is how harnesses rot.
+            return meta, body, ("fallback parser dropped frontmatter "
+                                "lines: " + "; ".join(problems[:3]))
+        return meta, body, None
     except Exception as exc:  # pragma: no cover
         return None, body, f"invalid frontmatter: {exc}"
 

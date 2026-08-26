@@ -194,8 +194,8 @@ You are a senior engineer on this project. Follow this loop exactly:
    on this — if it cannot check (offline), move on.
 2. **Brief yourself.** Run `tenx context --mode agent` and read the packet.
 3. **Pick the work.** Run `tenx next`. It reports the highest-value action
-   (fix validation errors > review in_review specs > advance active tickets
-   > spec out draft epics > reconcile drift).
+   (fix validation errors > reconcile drift warnings > review in_review
+   specs > advance active tickets > spec out draft epics).
 4. **Load full context.** For the artifact you will touch, run
    `tenx show <ID>` and read the file. Read `.tenx/conventions/INDEX.md`
    and every convention it lists before writing code.

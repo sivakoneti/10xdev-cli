@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Git-aware enforcement: tenx validate now flags recent code commits that have no activity-log write-back (commit-without-writeback rule, fail-open without git), and a new staged-change freshness gate (tenx gate commit-check) runs inside the git pre-commit hook; configure with commit_gate: on|warn|off (default warn) (SPC-023)
+- tenx doctor now audits enforcement health — missing/stale git pre-commit gate, core.hooksPath bypass, stale managed agent surfaces, missing .mcp.json / bundled skills, commit_gate: off — exits non-zero on problems with exact fix commands; tenx doctor --json adds enforcement_problems (SPC-023)
+- blocked is now a legal ticket status (workflow already referenced it); ticket creation and moves auto-append activity-log entries so ticket state changes are auditable (SPC-023)
+- Audit trail for gate escapes: evidence-gate blocks log a blocker entry, --force completions log a decision entry, and tenx archive now requires --approved-by "<operator>" and records the approver in the activity log (SPC-023)
+- tenx update re-syncs hooks and managed agent surfaces (hook install --agent detected --git) automatically after a successful upgrade (SPC-023)
+
+### Changed
+- Completion-drift rules (derived-status-drift, orphan-spec, epic-progress-drift) are now errors when an artifact is authored complete without the derived progress to back it — hand-editing status: complete in a spec/epic file no longer passes validate (SPC-023)
+- Evidence gate changelog check now scans every changelog section (not only [Unreleased]), so work documented under a released version also satisfies docs-sync (SPC-023)
+
+### Fixed
+- Git hook discovery handles linked worktrees (.git pointer files resolve to the common hooks dir); the pre-commit hook is timeout-wrapped and fails open with a warning if tenx itself fails, so a broken tenx can never block all commits (SPC-023)
+- MCP mutating tools now take the same per-project harness lock as the CLI (tenx_ticket/log/set/scan/... no longer race concurrent agents); MCP callers may pass root explicitly (SPC-023)
+- yamlite hardening: zero-indent lists parse correctly and fallback-parser problems are reported visibly instead of silently dropping content (SPC-023)
+- Changelog round-trip preserves heading-less entries, sub-bullets, and prose (byte-stable re-render) (SPC-023)
+- Capabilities catalog fixes: init and gate entries added, capabilities tagged for both CLI+MCP surfaces, archive/doctor/scan guidance updated; stale managed agent surfaces are now also a validate warning (agent-surface-stale) (SPC-023)
+- Docs refresh: architecture overview + README MCP tool list updated to current reality, dead docs/agent-adapters.md link removed, bundled tenx-process skill priority order aligned with tenx next, exec brief now documents the evidence gate, changelog requirement, and commit gate (SPC-023)
+
 ## [v0.18.0] - 2026-08-26
 
 ### Added

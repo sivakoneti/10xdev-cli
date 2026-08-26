@@ -1,3 +1,9 @@
+---
+description: tenx meta-harness — run the context packet before any work
+globs:
+alwaysApply: true
+---
+
 <!-- tenx:begin (managed block — do not edit by hand) -->
 ## Project context — tenx meta-harness
 

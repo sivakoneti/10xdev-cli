@@ -21,7 +21,7 @@ from . import __version__
 # group: session-loop stage used to order the human-readable rendering.
 CAPABILITIES: list[dict[str, str]] = [
     # ---------------------------------------------------------- discover
-    {"name": "capabilities", "surface": "cli", "group": "discover",
+    {"name": "capabilities", "surface": "both", "group": "discover",
      "usage": "tenx capabilities [--json]",
      "what": "This catalog: every command and tool, with when-to-use "
              "guidance.",
@@ -41,14 +41,19 @@ CAPABILITIES: list[dict[str, str]] = [
     {"name": "scan", "surface": "both", "group": "discover",
      "usage": "tenx scan [--write] [--json]",
      "what": "Map a codebase: stacks, test commands, CI, agent files, "
-             "directory census.",
-     "when": "Bootstrap a codebase map into .tenx/docs/ on a repo that "
-             "is new to the harness."},
+             "directory census. --write REPLACES the codebase-map DOC "
+             "body (regenerated content), so keep manual notes in a "
+             "separate DOC.",
+     "when": "Bootstrap or refresh the codebase map in .tenx/docs/; "
+             "re-run after major structural changes."},
     {"name": "doctor", "surface": "cli", "group": "discover",
-     "usage": "tenx doctor",
-     "what": "Environment and harness health check.",
-     "when": "Something looks broken (discovery, adapters, git) and you "
-             "want one diagnostic dump."},
+     "usage": "tenx doctor [--json]",
+     "what": "Environment and harness health check, including the "
+             "enforcement audit: pre-commit gate present/fresh, managed "
+             "agent surfaces current, MCP + skills installed. Exits 1 "
+             "with exact fix commands when anything is wrong.",
+     "when": "Something looks broken (discovery, adapters, git, gates) "
+             "and you want one diagnostic dump."},
     {"name": "update", "surface": "cli", "group": "discover",
      "usage": "tenx update --check | tenx update",
      "what": "Check for / apply CLI self-updates.",
@@ -119,8 +124,9 @@ CAPABILITIES: list[dict[str, str]] = [
      "when": "Human review passes; agents check it before claiming "
              "nothing is pending."},
     {"name": "archive", "surface": "cli", "group": "track",
-     "usage": "tenx archive <EPIC-ID> [--yes]",
-     "what": "Retire a finished epic and its specs.",
+     "usage": "tenx archive <EPIC-ID> --approved-by \"<operator>\" [--yes]",
+     "what": "Retire a finished epic and its specs. --approved-by is "
+             "REQUIRED and recorded in the activity log.",
      "when": "Only with explicit human approval — never archive on your "
              "own initiative."},
     {"name": "sync", "surface": "cli", "group": "track",
@@ -134,6 +140,14 @@ CAPABILITIES: list[dict[str, str]] = [
              "--list-rules prints the rule catalog.",
      "when": "Before ending any session and before every commit (the "
              "pre-commit gate runs it); fix errors, never leave new ones."},
+    {"name": "gate", "surface": "cli", "group": "quality",
+     "usage": "tenx gate commit-check",
+     "what": "Commit-time freshness gate: staged code files must have "
+             "write-back (an activity-log entry) behind them. Mode via "
+             "commit_gate in .tenx/config.yaml: on (block), warn "
+             "(default), off.",
+     "when": "Run automatically by the git pre-commit hook; run manually "
+             "to see what the hook would say."},
     {"name": "changelog", "surface": "both", "group": "quality",
      "usage": "tenx changelog [{show,add,release}] [TEXT] "
               "[--type added|changed|...] [--ref ID]",
@@ -141,6 +155,15 @@ CAPABILITIES: list[dict[str, str]] = [
      "when": "Whenever you ship a behavior change — the evidence gate "
              "requires an entry before a spec/epic can be completed."},
     # --------------------------------------------------------- integrate
+    {"name": "init", "surface": "cli", "group": "integrate",
+     "usage": "tenx init [--name X] [--description D] [--bootstrap] "
+              "[--standalone --code-root PATH] [--agent A|all|detected|"
+              "none] [--no-hooks] [--force]",
+     "what": "Scaffold the .tenx/ harness in a repo and wire the agent "
+             "surfaces (instruction files, session hook, MCP, skills, "
+             "pre-commit gate).",
+     "when": "Once per repo, before any other tenx command; re-run with "
+             "--force only to repair a broken harness."},
     {"name": "mcp", "surface": "cli", "group": "integrate",
      "usage": "tenx mcp [serve] | tenx mcp install",
      "what": "Model Context Protocol server on stdio exposing tenx as "

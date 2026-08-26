@@ -26,16 +26,41 @@ SERVER_INFO = {"name": "tenx", "version": __version__}
 
 # ------------------------------------------------------------ tool layer
 
-def _call_cli(func: Callable[..., int], **attrs: Any) -> tuple[str, int]:
-    """Run a cmd_* function, capturing stdout+stderr. Returns (text, rc)."""
-    ns = argparse.Namespace(root=None, **attrs)
+def _call_cli(func: Callable[..., int], *, lock: bool = False,
+              **attrs: Any) -> tuple[str, int]:
+    """Run a cmd_* function, capturing stdout+stderr. Returns (text, rc).
+
+    lock=True serializes the call behind the same per-project advisory
+    lock the CLI main() uses (SPC-023-T11): MCP tools must not race
+    concurrent agents around `.tenx` writes.
+    """
+    # SPC-023-T11: callers may pass root explicitly (MCP clients name the
+    # project); default to auto-discovery without colliding with attrs.
+    ns = argparse.Namespace(**{"root": None, **attrs})
     out, err = io.StringIO(), io.StringIO()
     rc = 0
-    try:
-        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            rc = func(ns)
-    except SystemExit as e:
-        rc = int(e.code or 0)
+
+    def run() -> int:
+        try:
+            return func(ns)
+        except SystemExit as e:
+            return int(e.code or 0)
+
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        if lock:
+            from . import cli as C
+            root = C._lock_root(ns)
+            if root is not None and C.is_initialized(root):
+                try:
+                    with C.harness_lock(root):
+                        rc = run()
+                except C.LockTimeout as e:
+                    print(f"tenx: {e}", file=sys.stderr)
+                    rc = 2
+            else:
+                rc = run()
+        else:
+            rc = run()
     text = out.getvalue()
     if err.getvalue().strip():
         text = (text + "\n" if text else "") + err.getvalue()
@@ -46,11 +71,16 @@ def _tooldefs() -> list[dict[str, Any]]:
     """Tool registry: name, description, inputSchema, cmd factory."""
     from . import cli as C
 
+    # SPC-023-T11: tools that write `.tenx` state take the same advisory
+    # lock as the CLI, so MCP-driven fleets cannot lose or corrupt writes.
+    mutating = {C.cmd_ticket, C.cmd_log, C.cmd_validate, C.cmd_scan,
+                C.cmd_changelog}
+
     def mk(func, defaults: dict[str, Any]):
         def handler(args: dict[str, Any]) -> tuple[str, int]:
             kw = {**defaults, **{k: v for k, v in args.items()
                                  if v is not None}}
-            return _call_cli(func, **kw)
+            return _call_cli(func, lock=(func in mutating), **kw)
         return handler
 
     S = {"type": "string"}

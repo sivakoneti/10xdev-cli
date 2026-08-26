@@ -91,23 +91,26 @@ RULE_CATALOG: dict[str, tuple[str, str]] = {
     "ticket-title-missing": ("info", "ticket has no title"),
     # -- spec/epic discipline ---------------------------------------------
     "orphan-spec": ("warning",
-                    "spec is in_progress/in_review/complete but defines no "
-                    "tickets"),
+                    "spec is in_progress/in_review (warning) or complete "
+                    "(error — evidence-gate bypass) but defines no tickets"),
     "spec-missing-sections": ("warning",
                               "spec body lacks required sections "
                               "(param: spec_sections, default "
                               "Summary,Validation)"),
-    "derived-status-drift": ("warning",
+    "derived-status-drift": ("error",
                              "authored spec status disagrees with the status "
                              "derived from its tickets (the 10X checkpoint "
-                             "rule; also surfaces as info when all tickets "
-                             "are done but the spec is not promoted)"),
+                             "rule). Error when authored 'complete' without "
+                             "all tickets done (evidence-gate bypass); info "
+                             "when all tickets are done but the spec is not "
+                             "promoted"),
     "epic-no-specs": ("info",
                       "active epic has no specs yet"),
-    "epic-progress-drift": ("warning",
-                            "epic status disagrees with its specs' statuses "
-                            "(also surfaces as info when all specs are done "
-                            "but the epic is not promoted)"),
+    "epic-progress-drift": ("error",
+                            "epic status disagrees with its specs' statuses. "
+                            "Error when authored 'complete' with incomplete "
+                            "specs (evidence-gate bypass); info when all "
+                            "specs are done but the epic is not promoted"),
     "archived-epic-active-specs": ("warning",
                                    "epic is archived but one or more of its "
                                    "specs are not"),
@@ -117,6 +120,18 @@ RULE_CATALOG: dict[str, tuple[str, str]] = {
                        "(param: stale_days)"),
     "log-quiet": ("info",
                   "no activity logged for quiet_days (param: quiet_days)"),
+    "commit-without-writeback": ("warning",
+                                 "recent git commit touched code files but "
+                                 "has no activity-log entry within "
+                                 "+/-commit_window_hours (param: "
+                                 "commit_window_hours, default 4) — skipped "
+                                 "write-backs surface at the next validate/"
+                                 "pre-commit run"),
+    "agent-surface-stale": ("warning",
+                            "a managed agent instruction file (AGENTS.md, "
+                            "CLAUDE.md, GEMINI.md, cursor/cline/... rules) "
+                            "predates the shipped hard-rules template; fix: "
+                            "`tenx hook install --agent all`"),
     "log-progress-no-ref": ("info",
                             "progress log entry has no artifact ref — "
                             "write-back should reference an artifact"),
@@ -273,6 +288,8 @@ def validate(project_root: Path, harness: Harness | None = None) -> RuleSet:
     _rule_dates(harness, rs)
     _rule_activity_discipline(project_root, rs)
     _rule_log_quiet(project_root, rs)
+    _rule_commit_writeback(project_root, harness, rs)
+    _rule_agent_surface(project_root, harness, rs)
     _rule_changelog(project_root, harness, rs)
     return rs
 
@@ -418,7 +435,11 @@ def _rule_tickets(harness: Harness, rs: RuleSet) -> None:
                        f"not in {list(TICKET_STATUSES)}",
                        artifact_id=s.id)
         if s.status in ("in_progress", "in_review", "complete") and not s.tickets:
-            rs.add("orphan-spec", "warning",
+            # SPC-023-T3: a hand-edited 'complete' with no tickets bypasses
+            # the evidence gate (which lives in the CLI) — make it an error
+            # so validate (and the pre-commit gate) catches it.
+            sev = "error" if s.status == "complete" else "warning"
+            rs.add("orphan-spec", sev,
                    f"{s.id}: status '{s.status}' but no tickets defined; "
                    "break the spec into tickets so progress is verifiable",
                    artifact_id=s.id)
@@ -461,9 +482,14 @@ def _rule_derived_drift(harness: Harness, rs: RuleSet) -> None:
         if derived is None or authored not in STATUSES:
             continue
         if authored == "complete" and derived != "complete":
-            rs.add("derived-status-drift", "warning",
+            # SPC-023-T3: error, not warning — this is the direct-file-edit
+            # bypass of the evidence gate. validate (and thus the pre-commit
+            # gate) now fails on a hand-edited 'complete'.
+            rs.add("derived-status-drift", "error",
                    f"{s.id}: authored status 'complete' but derived status is "
-                   f"'{derived}' (not all tickets are done)", artifact_id=s.id)
+                   f"'{derived}' (not all tickets are done); fix the tickets "
+                   "or revert the status — the evidence gate applies",
+                   artifact_id=s.id)
         elif authored in ("draft", "in_progress", "in_review") and derived == "complete":
             rs.add("derived-status-drift", "info",
                    f"{s.id}: all tickets done but authored status is "
@@ -484,7 +510,8 @@ def _rule_epic_drift(harness: Harness, rs: RuleSet) -> None:
             continue
         incomplete = sorted(s.id for s in specs if s.status != "complete")
         if e.status == "complete" and incomplete:
-            rs.add("epic-progress-drift", "warning",
+            # SPC-023-T3: same direct-edit bypass as specs — error.
+            rs.add("epic-progress-drift", "error",
                    f"{e.id}: epic marked complete but specs not complete: "
                    f"{', '.join(incomplete)}", artifact_id=e.id)
         if e.status in ("draft", "in_review") and not incomplete:
@@ -663,3 +690,129 @@ def _rule_log_quiet(project_root: Path, rs: RuleSet) -> None:
         rs.add("log-quiet", "info",
                f"no activity logged for {age.days} days; agents should "
                "`tenx log` after significant work")
+
+
+# SPC-023-T2: git awareness -------------------------------------------------
+# Paths that are process/agent-surface files rather than "code": a commit
+# touching only these IS the write-back and never needs one.
+_NON_CODE_PREFIXES = (
+    ".tenx/", ".cursor/", ".clinerules/", ".kiro/", ".claude/",
+    ".dsh-preset/", ".github/copilot-instructions.md", ".windsurfrules",
+    ".continuerules", ".mcp.json", ".gitignore", "logs/",
+    "AGENTS.md", "CLAUDE.md", "GEMINI.md", "CONVENTIONS.md", "QWEN.md",
+    "CHANGELOG.md",
+)
+
+
+def _is_code_path(rel: str) -> bool:
+    rel = rel.strip().lstrip("/")
+    if not rel:
+        return False
+    return not any(rel == p.rstrip("/") or rel.startswith(p)
+                   for p in _NON_CODE_PREFIXES)
+
+
+def _rule_commit_writeback(project_root: Path, harness: Harness,
+                           rs: RuleSet) -> None:
+    """Recent commits touching code must have a matching activity entry.
+
+    Match = an entry within +/-commit_window_hours of the commit, or an
+    entry whose message mentions the commit hash. Fail-open: no git binary,
+    no repo, or any git error produces no finding — this rule must never
+    break validate on a machine without git.
+    """
+    import subprocess
+
+    from .discovery import code_root as _code_root
+
+    try:
+        window_h = float(rs.params.get("commit_window_hours", 4) or 4)
+    except (TypeError, ValueError):
+        window_h = 4.0
+    if window_h <= 0:
+        return
+    try:
+        cr = _code_root(project_root, harness.config)
+    except Exception:
+        return
+    try:
+        probe = subprocess.run(["git", "rev-parse", "--git-dir"], cwd=cr,
+                               capture_output=True, text=True, timeout=10)
+        if probe.returncode != 0:
+            return  # not a git repo: nothing to compare against
+        since = (dt.datetime.now(dt.timezone.utc)
+                 - dt.timedelta(hours=window_h)).isoformat()
+        log = subprocess.run(
+            ["git", "log", f"--since={since}", "--no-merges", "-n", "20",
+             "--pretty=format:%H%x00%aI%x00%s"],
+            cwd=cr, capture_output=True, text=True, timeout=15)
+        if log.returncode != 0:
+            return
+        commits = [line.split("\x00", 2)
+                   for line in log.stdout.splitlines()]
+        commits = [c for c in commits if len(c) == 3]
+        if not commits:
+            return
+        entries = read_entries(project_root)
+        for sha, when, subject in commits:
+            files = subprocess.run(
+                ["git", "show", "--name-only", "--pretty=format:", sha],
+                cwd=cr, capture_output=True, text=True, timeout=15)
+            if files.returncode != 0:
+                continue
+            if not any(_is_code_path(l) for l in files.stdout.splitlines()):
+                continue  # harness/process-only commit: it IS the write-back
+            try:
+                cts = dt.datetime.fromisoformat(when)
+            except ValueError:
+                continue
+            if cts.tzinfo is None:
+                cts = cts.replace(tzinfo=dt.timezone.utc)
+            short = sha[:8]
+            matched = False
+            for e in entries:
+                # session/blocker entries are not write-back (same policy
+                # as the evidence gate's EVIDENCE_LOG_TYPES)
+                if str(e.get("type", "")) not in ("progress", "review",
+                                                  "decision", "note"):
+                    continue
+                msg = str(e.get("message", ""))
+                if short in msg or sha in msg:
+                    matched = True
+                    break
+                try:
+                    ets = dt.datetime.fromisoformat(str(e.get("ts", "")))
+                except ValueError:
+                    continue
+                if ets.tzinfo is None:
+                    ets = ets.replace(tzinfo=dt.timezone.utc)
+                if abs((ets - cts).total_seconds()) <= window_h * 3600:
+                    matched = True
+                    break
+            if not matched:
+                rs.add("commit-without-writeback", "warning",
+                       f"commit {short} '{subject[:60]}' touched code but "
+                       f"has no activity-log entry within +/-{window_h:g}h; "
+                       "write back with "
+                       "`tenx log \"what changed\" --ref <ID>`")
+    except (OSError, subprocess.SubprocessError):
+        return  # git missing or failed: fail-open, never block on that
+
+
+def _rule_agent_surface(project_root: Path, harness: Harness,
+                        rs: RuleSet) -> None:
+    """SPC-023-T8: managed instruction files must match the shipped
+    template. After a tenx upgrade the old block is stale until
+    `tenx hook install --agent all` rewrites it — this rule keeps
+    validate/pre-commit nagging until that happens."""
+    from .discovery import code_root as _code_root
+    from .hooks import find_stale_surfaces
+
+    try:
+        cr = _code_root(project_root, harness.config)
+        for rel in find_stale_surfaces(cr):
+            rs.add("agent-surface-stale", "warning",
+                   f"{rel} predates the shipped hard-rules template; fix: "
+                   "`tenx hook install --agent all`")
+    except Exception:
+        return

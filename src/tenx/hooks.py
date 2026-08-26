@@ -158,27 +158,121 @@ if command -v tenx >/dev/null 2>&1; then
 elif command -v python3 >/dev/null 2>&1 && python3 -c "import tenx" >/dev/null 2>&1; then
   TENX="python3 -m tenx"
 else
+  echo "tenx pre-commit gate: WARNING - no tenx CLI found; skipping gate." >&2
   exit 0  # tenx not installed here; never block a commit for that
 fi
 
-out="$($TENX validate 2>&1)"
+# SPC-023-T9: a hung or broken tenx must not wedge commits. Use a timeout
+# when available and fail OPEN (with a visible warning) on timeout/start
+# failure; only a real validate/gate verdict blocks.
+RUN=""
+if command -v timeout >/dev/null 2>&1; then
+  RUN="timeout 60"
+fi
+
+out="$($RUN $TENX validate 2>&1)"
 rc=$?
+if [ $rc -eq 124 ] || [ $rc -eq 125 ] || [ $rc -eq 126 ] || [ $rc -eq 127 ]; then
+  echo "tenx pre-commit gate: WARNING - tenx validate timed out or could not" >&2
+  echo "run (rc=$rc); failing open. Check `tenx doctor`." >&2
+  exit 0
+fi
 if [ $rc -ne 0 ]; then
   echo "tenx pre-commit gate: BLOCKED - tenx validate reports errors." >&2
   printf '%s\n' "$out" >&2
   echo "Fix the errors, or (with explicit operator approval) git commit --no-verify." >&2
   exit 1
 fi
+
+# SPC-023-T4: staged code must have write-back behind it.
+# Mode comes from commit_gate in .tenx/config.yaml (on|warn|off, default warn).
+$RUN $TENX gate commit-check
+rc=$?
+if [ $rc -eq 124 ] || [ $rc -eq 125 ] || [ $rc -eq 126 ] || [ $rc -eq 127 ]; then
+  echo "tenx pre-commit gate: WARNING - tenx gate commit-check timed out or" >&2
+  echo "could not run (rc=$rc); failing open. Check `tenx doctor`." >&2
+  exit 0
+fi
+if [ $rc -ne 0 ]; then
+  echo "tenx pre-commit gate: BLOCKED - staged code has no write-back." >&2
+  echo "Log your work (tenx log ... --ref <ID>), or (with explicit operator" >&2
+  echo "approval) git commit --no-verify." >&2
+  exit 1
+fi
 exit 0
 """
 
 
+def find_stale_surfaces(code_root: Path) -> list[str]:
+    """SPC-023-T8: managed instruction files whose block predates the
+    shipped template. Shared by `tenx doctor` and the
+    `agent-surface-stale` validate rule. Returns repo-relative paths."""
+    def managed_region(text: str) -> str | None:
+        if MANAGED_BEGIN not in text or MANAGED_END not in text:
+            return None
+        start = text.index(MANAGED_BEGIN)
+        end = text.index(MANAGED_END, start) + len(MANAGED_END)
+        return text[start:end]
+
+    stale: list[str] = []
+    block_files = ("AGENTS.md", "CLAUDE.md", "GEMINI.md",
+                   ".clinerules/tenx.md", ".windsurfrules",
+                   ".github/copilot-instructions.md", ".continuerules",
+                   ".kiro/steering/tenx.md", "CONVENTIONS.md", "QWEN.md")
+    for rel in block_files:
+        p = code_root / rel
+        if not p.is_file():
+            continue
+        text = p.read_text(encoding="utf-8", errors="replace")
+        region = managed_region(text)
+        if region is not None and region != AGENT_MD_BLOCK:
+            stale.append(rel)
+    cursor = code_root / ".cursor" / "rules" / "tenx.mdc"
+    if cursor.is_file() and cursor.read_text(
+            encoding="utf-8", errors="replace") != CURSOR_RULE:
+        stale.append(".cursor/rules/tenx.mdc")
+    return stale
+
+
 def _find_git_dir(start: Path) -> Path | None:
-    """Walk up from start to find a directory containing a `.git` dir."""
+    """Walk up from start to find a directory containing a `.git` dir.
+
+    Handles linked worktrees: their `.git` is a FILE containing
+    `gitdir: <path>`. Hooks live in the common dir, so follow the
+    worktree's `commondir` pointer when present — installing into the
+    per-worktree dir would leave the gate silently inactive.
+    """
     cur = start.resolve()
     for cand in [cur, *cur.parents]:
-        if (cand / ".git").is_dir():
-            return cand / ".git"
+        candidate = cand / ".git"
+        if candidate.is_dir():
+            return candidate
+        if candidate.is_file():
+            try:
+                line = candidate.read_text(
+                    encoding="utf-8", errors="replace").strip()
+            except OSError:
+                return None
+            if line.startswith("gitdir:"):
+                gd = Path(line.split(":", 1)[1].strip())
+                if not gd.is_absolute():
+                    gd = cand / gd
+                gd = gd.resolve()
+                if gd.is_dir():
+                    common = gd / "commondir"
+                    if common.is_file():
+                        try:
+                            cd = Path(common.read_text(
+                                encoding="utf-8").strip())
+                            if not cd.is_absolute():
+                                cd = gd / cd
+                            cd = cd.resolve()
+                            if cd.is_dir():
+                                return cd
+                        except OSError:
+                            pass
+                    return gd
+            return None
     return None
 
 

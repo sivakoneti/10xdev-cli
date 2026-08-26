@@ -562,6 +562,17 @@ def cmd_archive(args: argparse.Namespace) -> int:
     blockers = [(s.id, str(t.get("id", "")))
                 for s in specs for t in s.tickets
                 if str(t.get("status")) in open_statuses]
+    approved = str(getattr(args, "approved_by", "") or "").strip()
+    if not approved:
+        # SPC-023-T14: hard rule — never archive without explicit
+        # human/operator approval. An agent must not be able to run
+        # this on its own authority.
+        msg = (f"tenx: archiving {epic.id} requires explicit operator "
+               f"approval. Re-run as: "
+               f"tenx archive {epic.id} --approved-by \"<operator name>\"")
+        print(msg,
+              file=sys.stderr)
+        return 2
     if blockers and not args.yes:
         print(f"tenx: {epic.id} has {len(blockers)} open ticket(s):",
               file=sys.stderr)
@@ -577,9 +588,10 @@ def cmd_archive(args: argparse.Namespace) -> int:
         update_meta(s, {"status": "archived"})
     append_entry(root,
                  f"archived {epic.id} ({epic.title}) and "
-                 f"{len(specs)} spec(s)",
+                 f"{len(specs)} spec(s); approved by {approved}",
                  entry_type="decision", ref=epic.id)
-    print(f"archived {epic.id} + {len(specs)} spec(s). "
+    print(f"archived {epic.id} + {len(specs)} spec(s) "
+          f"(approved by {approved}). "
           f"They stay readable via `tenx show`.")
     return 0
 
@@ -726,10 +738,20 @@ def cmd_set(args: argparse.Namespace) -> int:
                       file=sys.stderr)
                 for r in reasons:
                     print(f"  - {r}", file=sys.stderr)
+                # SPC-023-T7: gate blocks leave an audit trail.
+                append_entry(root,
+                             f"evidence gate BLOCKED {art.id} -> complete: "
+                             + "; ".join(reasons),
+                             entry_type="blocker", ref=art.id)
                 return 2
         elif forced:
             print(f"tenx: --force used — evidence gate bypassed for "
                   f"{art.id} (human override).", file=sys.stderr)
+            # SPC-023-T7: forced completions are visible in `tenx history`.
+            append_entry(root,
+                         f"evidence gate BYPASSED with --force for "
+                         f"{art.id} -> complete (human override)",
+                         entry_type="decision", ref=art.id)
     update_meta(art, {field: value})
     print(f"{art.id}: {field} = {value}")
     return 0
@@ -766,14 +788,44 @@ def cmd_ticket(args: argparse.Namespace) -> int:
     if args.title and not target.get("title"):
         target["title"] = args.title
     update_meta(art, {"tickets": tickets})
+    # SPC-023-T6: every ticket move leaves a trace in the activity log —
+    # skipping ticket tracking is no longer invisible.
     if created:
+        append_entry(root,
+                     f"ticket {target['id']}: created as {args.status}",
+                     entry_type="progress", ref=art.id)
         print(f"{art.id} {target['id']}: created as {args.status}")
     else:
+        append_entry(root,
+                     f"ticket {target['id']}: {old} -> {args.status}",
+                     entry_type="progress", ref=art.id)
         print(f"{art.id} {target['id']}: {old} -> {args.status}")
     d = derived_status(art)
     if d:
         print(f"derived spec status: {d} (authored: {art.status})")
     return 0
+
+
+def cmd_gate(args: argparse.Namespace) -> int:
+    """Commit-time gates. `commit-check`: staged code must have write-back."""
+    if getattr(args, "gate_cmd", "") != "commit-check":
+        print("tenx: unknown gate command", file=sys.stderr)
+        return 2
+    root = _root_or_die(args.root)
+    _require_init(root)
+    harness = load_harness(root)
+    from .gate import commit_check, commit_gate_mode
+    mode = commit_gate_mode(harness)
+    if mode == "off":
+        return 0
+    ok, message = commit_check(root, harness)
+    if ok:
+        return 0
+    if mode == "warn":
+        print(f"tenx commit-gate WARN: {message}", file=sys.stderr)
+        return 0
+    print(f"tenx commit-gate BLOCKED: {message}", file=sys.stderr)
+    return 1
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
@@ -991,27 +1043,26 @@ def cmd_hook(args: argparse.Namespace) -> int:
 
 def cmd_doctor(args: argparse.Namespace) -> int:
     root = _root_or_die(args.root)
-    print(f"tenx v{__version__}")
-    print(f"python {sys.version.split()[0]}")
-    print(f"project root: {root}")
     initialized = is_initialized(root)
-    print(f"harness: {'found' if initialized else 'MISSING (tenx init)'} "
-          f"at {harness_root(root)}")
     try:
         import yaml  # noqa: F401
-        print("yaml backend: PyYAML")
+        backend = "PyYAML"
     except ImportError:
-        print("yaml backend: built-in yamlite (PyYAML not installed — fine)")
+        backend = "yamlite"
+    data: dict[str, Any] = {
+        "version": __version__,
+        "python": sys.version.split()[0],
+        "project_root": str(root),
+        "initialized": initialized,
+        "harness_root": str(harness_root(root)),
+        "yaml_backend": backend,
+    }
+    problems: list[str] = []
     if initialized:
         harness = load_harness(root)
         cr = code_root(root, harness.config)
-        if cr != root:
-            print(f"code repo (code_root): {cr}")
         c = {t: len(harness.by_type(t)) for t in TYPE_PREFIX}
-        print(f"artifacts: {c['epic']} epics, {c['spec']} specs, "
-              f"{c['convention']} conventions, {c['doc']} docs")
         entries = read_entries(root)
-        print(f"activity log: {len(entries)} entries")
         claude_settings = cr / ".claude" / "settings.json"
         hooked = False
         if claude_settings.is_file():
@@ -1021,12 +1072,138 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             "tenx:begin" in (cr / f).read_text(encoding="utf-8")
             for f in ("AGENTS.md", "CLAUDE.md", "GEMINI.md")
             if (cr / f).is_file())
-        print(f"session hook: claude settings={'yes' if hooked else 'no'}, "
-              f"managed md block={'yes' if md_hooked else 'no'}")
+        problems = _doctor_enforcement(root, cr, harness)
         rs = validate(root, harness)
-        print(f"validation: {len(rs.errors())} errors, "
-              f"{len(rs.warnings())} warnings")
+        data.update({
+            "code_root": str(cr),
+            "artifacts": c,
+            "activity_entries": len(entries),
+            "session_hook": {"claude_settings": hooked,
+                             "managed_md_block": md_hooked},
+            "validation": {"errors": len(rs.errors()),
+                           "warnings": len(rs.warnings())},
+        })
+    data["enforcement_problems"] = problems
+    if getattr(args, "json", False):
+        print(json.dumps(data, indent=2))
+        return 1 if problems else 0
+    print(f"tenx v{data['version']}")
+    print(f"python {data['python']}")
+    print(f"project root: {root}")
+    print(f"harness: {'found' if initialized else 'MISSING (tenx init)'} "
+          f"at {harness_root(root)}")
+    print(f"yaml backend: {backend}"
+          + ("" if backend == "PyYAML"
+             else " (PyYAML not installed — fine)"))
+    if initialized:
+        if data["code_root"] != str(root):
+            print(f"code repo (code_root): {data['code_root']}")
+        c = data["artifacts"]
+        print(f"artifacts: {c['epic']} epics, {c['spec']} specs, "
+              f"{c['convention']} conventions, {c['doc']} docs")
+        print(f"activity log: {data['activity_entries']} entries")
+        sh = data["session_hook"]
+        print(f"session hook: claude settings="
+              f"{'yes' if sh['claude_settings'] else 'no'}, "
+              f"managed md block="
+              f"{'yes' if sh['managed_md_block'] else 'no'}")
+        print(f"validation: {data['validation']['errors']} errors, "
+              f"{data['validation']['warnings']} warnings")
+        if problems:
+            print("enforcement problems:")
+            for p in problems:
+                print(f"  ! {p}")
+            return 1
+        print("enforcement: git gate + agent surfaces all fresh")
     return 0
+
+
+def _doctor_enforcement(root: Path, cr: Path, harness) -> list[str]:
+    """SPC-023-T1: doctor must see enforcement rot, not just marker presence.
+
+    Checks the git pre-commit gate (present/managed/fresh, core.hooksPath
+    override), managed-block freshness vs the shipped templates, .mcp.json
+    registration, and bundled skills. Returns problem lines, each ending
+    in the exact fix command.
+    """
+    import subprocess
+
+    from .hooks import GIT_HOOK_MARKER, GIT_HOOK_SCRIPT
+
+    problems: list[str] = []
+
+    # -- git pre-commit gate ---------------------------------------------
+    git_dir = None
+    try:
+        probe = subprocess.run(
+            ["git", "rev-parse", "--git-common-dir"], cwd=cr,
+            capture_output=True, text=True, timeout=10)
+        if probe.returncode == 0 and probe.stdout.strip():
+            gd = Path(probe.stdout.strip())
+            git_dir = gd if gd.is_absolute() else (cr / gd)
+    except (OSError, subprocess.SubprocessError):
+        git_dir = None
+    if git_dir is None:
+        problems.append("no git repository found at the code root — the "
+                        "pre-commit gate cannot be installed")
+    else:
+        try:
+            hp = subprocess.run(
+                ["git", "config", "core.hooksPath"], cwd=cr,
+                capture_output=True, text=True, timeout=10)
+            hooks_path = hp.stdout.strip() if hp.returncode == 0 else ""
+        except (OSError, subprocess.SubprocessError):
+            hooks_path = ""
+        hooks_dir = (Path(hooks_path) if hooks_path
+                     else git_dir / "hooks")
+        if not hooks_dir.is_absolute():
+            hooks_dir = cr / hooks_dir
+        hook = hooks_dir / "pre-commit"
+        if hooks_path:
+            problems.append(
+                f"git core.hooksPath is set to '{hooks_path}' — tenx's "
+                "pre-commit gate in .git/hooks is BYPASSED; unset it "
+                "(`git config --unset core.hooksPath`) or install the gate "
+                "there (`tenx hook install --git`)")
+        if not hook.is_file():
+            problems.append("git pre-commit gate MISSING — commits are "
+                            "ungated; fix: `tenx hook install --git`")
+        else:
+            content = hook.read_text(encoding="utf-8", errors="replace")
+            if GIT_HOOK_MARKER not in content:
+                problems.append("a non-tenx pre-commit hook is installed; "
+                                "tenx will not clobber it — chain tenx "
+                                "validate into it, or replace it with "
+                                "`tenx hook install --git`")
+            elif content != GIT_HOOK_SCRIPT:
+                problems.append("git pre-commit gate is STALE (older tenx "
+                                "version wrote it); fix: "
+                                "`tenx hook install --git`")
+
+    # -- managed agent-surface freshness ----------------------------------
+    from .hooks import find_stale_surfaces
+    stale = find_stale_surfaces(cr)
+    if stale:
+        problems.append(
+            "stale managed instruction file(s): " + ", ".join(stale)
+            + " — they predate the current hard-rules template; fix: "
+              "`tenx hook install --agent all`")
+
+    # -- MCP registration + bundled skills --------------------------------
+    if not (cr / ".mcp.json").is_file():
+        problems.append(".mcp.json missing — MCP-capable harnesses get no "
+                        "tenx tools; fix: `tenx mcp install`")
+    if not (cr / ".claude" / "skills").is_dir():
+        problems.append("bundled skills not installed (.claude/skills); "
+                        "fix: `tenx skills install`")
+
+    # -- gate configuration (informational problems: none, just report) ---
+    from .gate import COMMIT_GATE_CONFIG_KEY, commit_gate_mode
+    mode = commit_gate_mode(harness)
+    if str(harness.config.get(COMMIT_GATE_CONFIG_KEY, "")).strip() == "off":
+        problems.append("commit_gate is OFF in .tenx/config.yaml — commits "
+                        "of unlogged code will not even warn")
+    return problems
 
 
 def cmd_update(args: argparse.Namespace) -> int:
@@ -1035,7 +1212,46 @@ def cmd_update(args: argparse.Namespace) -> int:
     Default: check + upgrade if newer. --check: report only, never
     upgrade — this is the session-start form agents should run.
     """
-    return run_update(__version__, check_only=args.check, as_json=args.json)
+    from .update import check_update
+    try:
+        info = check_update(__version__)
+    except Exception:
+        info = {}
+    rc = run_update(__version__, check_only=args.check, as_json=args.json)
+    if rc == 0 and not args.check and info.get("update_available"):
+        _resync_after_upgrade(getattr(args, "root", None))
+    return rc
+
+
+def _resync_after_upgrade(root_arg: str | None) -> None:
+    """SPC-023-T8: resync lifecycle.
+
+    After a successful upgrade the on-disk agent surfaces and the git
+    pre-commit hook still carry the OLD version's templates. Re-run
+    `tenx hook install` with the NEW binary (now on PATH) so the hard
+    rules and the gate stay current without anyone remembering. Fail-open:
+    a resync problem must never fail `tenx update` itself.
+    """
+    import subprocess
+
+    from .discovery import find_project_root, is_initialized
+
+    try:
+        root = find_project_root(Path(root_arg) if root_arg else None)
+    except Exception:
+        return
+    if root is None or not is_initialized(root):
+        return
+    print("Resyncing agent surfaces + git gate with the new version...")
+    try:
+        r = subprocess.run(["tenx", "hook", "install", "--agent",
+                            "detected", "--git"], cwd=root, timeout=120)
+        if r.returncode != 0:
+            print("tenx update: resync reported a problem - run "
+                  "`tenx hook install --agent all --git` manually.")
+    except (OSError, subprocess.SubprocessError):
+        print("tenx update: could not run the resync - run "
+              "`tenx hook install --agent all --git` manually.")
 
 
 def cmd_changelog(args: argparse.Namespace) -> int:
@@ -1167,6 +1383,10 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("epic", help="epic id, e.g. EPC-001")
     sp.add_argument("--yes", action="store_true",
                     help="archive even if tickets are still open")
+    sp.add_argument("--approved-by", default="",
+                    help="REQUIRED: the human/operator who approved the "
+                         "archive (hard rule: never archive without "
+                         "explicit approval)")
     sp.set_defaults(func=cmd_archive)
 
     sp = sub.add_parser("new", help="create an artifact")
@@ -1203,6 +1423,14 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("status", choices=TICKET_STATUSES)
     sp.add_argument("--title", help="ticket title (used when creating)")
     sp.set_defaults(func=cmd_ticket)
+
+    sp = sub.add_parser("gate", help="commit-time gates")
+    gsp = sp.add_subparsers(dest="gate_cmd")
+    g = gsp.add_parser("commit-check",
+                       help="block/warn when staged code has no write-back")
+    g.add_argument("--root", default=None)
+    g.set_defaults(func=cmd_gate)
+    sp.set_defaults(func=lambda a: 2)
 
     sp = sub.add_parser("validate", help="lint the SDLC")
     sp.add_argument("--fix", action="store_true",
@@ -1280,6 +1508,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(func=cmd_hook)
 
     sp = sub.add_parser("doctor", help="environment + harness health")
+    sp.add_argument("--json", action="store_true",
+                    help="machine-readable health report")
     sp.set_defaults(func=cmd_doctor)
 
     sp = sub.add_parser("update",
@@ -1315,7 +1545,8 @@ def build_parser() -> argparse.ArgumentParser:
 # Commands that write `.tenx` state. They are serialized behind a per-project
 # advisory lock so a fleet of concurrent agents cannot lose or corrupt writes.
 MUTATING_COMMANDS = {"init", "new", "set", "ticket", "log", "archive",
-                     "hook", "skills", "sync", "validate", "changelog"}
+                     "hook", "skills", "sync", "validate", "changelog",
+                     "scan"}  # scan --write rewrites conventions/INDEX.md
 
 
 def _lock_root(args: argparse.Namespace) -> Path | None:
