@@ -222,6 +222,13 @@ def cmd_status(args: argparse.Namespace) -> int:
     return cmd_context(args)
 
 
+def cmd_capabilities(args: argparse.Namespace) -> int:
+    """Print the capability catalog (what tenx can do, and when)."""
+    from .capabilities import catalog, render_text
+    _emit(catalog(), args.json, render_text)
+    return 0
+
+
 def cmd_scan(args: argparse.Namespace) -> int:
     from .discovery import code_root as resolve_code_root
     from .scan import scan_tree
@@ -1121,6 +1128,12 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("status", help="operator dashboard")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_status)
+
+    sp = sub.add_parser("capabilities",
+                        help="capability catalog: every command and "
+                             "tool with when-to-use guidance")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=cmd_capabilities)
 
     sp = sub.add_parser("scan", help="map the codebase (stack, tests, CI, "
                                       "agent files, directory census)")

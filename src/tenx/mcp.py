@@ -184,6 +184,13 @@ def _tooldefs() -> list[dict[str, Any]]:
          "handler": mk(C.cmd_changelog, {"action": "show", "text": None,
                                          "type": "Added", "ref": None,
                                          "json": False})},
+        {"name": "tenx_capabilities",
+         "description": "Capability catalog: every tenx command and "
+                        "tool with when-to-use guidance. Call this once "
+                        "when you first work in a tenx-governed project "
+                        "to learn what tenx can do and when to use it.",
+         "inputSchema": {"type": "object", "properties": {}},
+         "handler": mk(C.cmd_capabilities, {"json": False})},
     ]
 
 

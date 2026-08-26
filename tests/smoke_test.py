@@ -117,11 +117,24 @@ def main() -> int:
         out = tenx("context", "--mode", "agent", cwd=proj).stdout
         check("packet has epics", "## Epics" in out and "EPC-001" in out)
         check("packet has protocol", "Operating protocol" in out)
+        check("packet advertises capabilities", "tenx capabilities" in out)
         check("packet has conventions index path", "conventions/INDEX.md" in out)
         out = tenx("context", "--mode", "operator", cwd=proj).stdout
         check("operator dashboard", "operator dashboard" in out)
         data = json.loads(tenx("context", "--json", cwd=proj).stdout)
         check("json counts", data["counts"]["specs"] == 1, str(data["counts"]))
+
+        print("== capability catalog ==")
+        cat_text = tenx("capabilities", cwd=proj).stdout
+        check("catalog groups commands",
+              "## Discover & orient" in cat_text and "tenx validate" in cat_text)
+        check("catalog has when-guidance", "\n  when:" in cat_text)
+        cat = json.loads(tenx("capabilities", "--json", cwd=proj).stdout)
+        cap_names = {c["name"] for c in cat["capabilities"]}
+        check("json catalog entries well-formed",
+              {"capabilities", "context", "validate", "mcp"} <= cap_names
+              and all({"name", "surface", "group", "what", "when",
+                       "usage"} <= set(c) for c in cat["capabilities"]))
 
         print("== init auto-wires agent harnesses ==")
         autoproj = tmp / "auto-wire"
@@ -442,6 +455,8 @@ def main() -> int:
              "params": {"name": "no_such_tool", "arguments": {}}},
             "this line is not json",
             {"jsonrpc": "2.0", "id": 5, "method": "bogus/method"},
+            {"jsonrpc": "2.0", "id": 6, "method": "tools/call",
+             "params": {"name": "tenx_capabilities", "arguments": {}}},
         ]
         inp = "\n".join(json.dumps(m) if isinstance(m, dict) else m
                          for m in mcp_msgs) + "\n"
@@ -462,10 +477,12 @@ def main() -> int:
         check("mcp initialize negotiates",
               resp[1]["result"]["serverInfo"]["name"] == "tenx")
         tool_names = {t["name"] for t in resp[2]["result"]["tools"]}
-        check("mcp lists 13 tools", len(tool_names) == 13,
+        check("mcp lists 14 tools", len(tool_names) == 14,
               str(tool_names))
         check("mcp exposes tenx_context", "tenx_context" in tool_names)
         check("mcp exposes tenx_watchdog", "tenx_watchdog" in tool_names)
+        check("mcp exposes tenx_capabilities",
+              "tenx_capabilities" in tool_names)
         check("mcp tools/call works",
               resp[3]["result"]["isError"] is False
               and "tenx validate" in resp[3]["result"]["content"][0]["text"])
@@ -474,6 +491,10 @@ def main() -> int:
         check("mcp parse error reported", parse_errors == 1)
         check("mcp unknown method -> -32601",
               resp[5]["error"]["code"] == -32601)
+        check("mcp capabilities call works",
+              resp[6]["result"]["isError"] is False
+              and "capability catalog"
+              in resp[6]["result"]["content"][0]["text"])
         # mcp install writes managed .mcp.json
         tenx("mcp", "install", cwd=scanproj)
         mcpjson = scanproj / ".mcp.json"

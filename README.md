@@ -229,6 +229,7 @@ guidance, so existing artifacts are never flagged.
 
 ```bash
 tenx init [--bootstrap]          # scaffold .tenx/ in this project
+tenx capabilities [--json]       # capability catalog: every command/tool + when-to-use guidance
 tenx context --mode operator     # human dashboard
 tenx context --mode agent [--budget N]  # full packet; --budget truncates low-priority sections
 tenx status                      # alias for the operator dashboard
@@ -262,6 +263,15 @@ tenx changelog [show]            # print the Keep-a-Changelog CHANGELOG.md
 tenx changelog add "msg" [--type added|changed|deprecated|removed|fixed|security] [--ref SPC-001]
 tenx changelog release v0.16.0   # stamp [Unreleased] into a dated version
 ```
+
+### Discovering what tenx can do
+
+Agents (and humans) don't have to memorize this page. `tenx capabilities`
+prints the full command/tool catalog grouped by session-loop stage, each
+with a one-line "what" and a "when" that says in which situation to reach
+for it (`--json` for machine-readable output). The same catalog is
+exposed as the `tenx_capabilities` MCP tool, and the context packet
+points at both — so any harness discovers the surface on its own.
 
 ### Onboard an existing codebase in one command
 

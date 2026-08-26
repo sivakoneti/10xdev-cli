@@ -23,21 +23,23 @@ PROTOCOL = """## Operating protocol (always follow)
 1. The tenx CLI self-updates. At session start run `tenx update --check`;
    if it reports a newer version, tell the human and suggest
    `tenx update` to install it. Never block on this — offline is fine.
-2. Before planning or coding, load the artifacts relevant to your task
+2. Not sure what tenx can do? Run `tenx capabilities` for the full
+   command/tool catalog with when-to-use guidance.
+3. Before planning or coding, load the artifacts relevant to your task
    (`tenx show <ID>`), and read `.tenx/conventions/INDEX.md` plus every
    convention it lists. Conventions bind you.
-3. If unsure what to do next, run `tenx next` and do the top item. To
+4. If unsure what to do next, run `tenx next` and do the top item. To
    spot blocked or stalled work, run `tenx watchdog` — it ranks what needs
    attention and says whether each item is being handled.
-4. Keep ticket statuses in sync as you work:
+5. Keep ticket statuses in sync as you work:
    `tenx ticket <SPEC-ID> <TICKET-ID> <status>`.
-5. After significant work, write back: `tenx log "what changed" --ref <ID>`.
+6. After significant work, write back: `tenx log "what changed" --ref <ID>`.
    When you ship a behavior change, also note it in the changelog (docs-sync):
    `tenx changelog add "what changed" --ref <ID>` — the evidence gate requires
    a changelog entry before a spec/epic can be marked complete.
-6. Before ending a session run `tenx validate` and fix any drift you
+7. Before ending a session run `tenx validate` and fix any drift you
    introduced. Never leave new errors behind.
-7. Process facts live in `.tenx/` artifacts. Do not invent them; if a
+8. Process facts live in `.tenx/` artifacts. Do not invent them; if a
    convention conflicts with a spec, stop and ask the human."""
 
 
@@ -208,7 +210,8 @@ def render_markdown(project_root: Path, mode: str = "agent",
         f"- Harness (context base): `{data['harness_root']}/`\n"
         f"- CLI: tenx v{data['cli_version']} — agent-facing and "
         f"self-updating; run `tenx update --check` to see if a newer "
-        f"version exists.\n"
+        f"version exists; `tenx capabilities` lists every command "
+        f"and tool with when-to-use guidance.\n"
         f"- Artifacts: {data['counts']['epics']} epics, "
         f"{data['counts']['specs']} specs, {data['counts']['conventions']} conventions, "
         f"{data['counts']['docs']} docs")
