@@ -725,7 +725,7 @@ def main() -> int:
                    for f in d.get(k, [])}
         check("catalog covers emitted rules", emitted <= cat_ids,
               str(emitted - cat_ids))
-        check("catalog has 38 rules", len(cat) == 38, str(len(cat)))
+        check("catalog has 40 rules", len(cat) == 40, str(len(cat)))
 
         # ---- tenx review + archive ----
         tenx("new", "epic", "Review epic", cwd=scanproj)
@@ -1716,6 +1716,61 @@ def main() -> int:
 
         check("T5: capabilities catalog covers converge",
               "converge" in {c["name"] for c in _CAPS})
+
+        # ---- SPC-027 epic body & template validation discipline ----
+        eproj = Path(tempfile.mkdtemp(prefix="tenx-epic-disc-"))
+        try:
+            tenx("init", "--name", "eproj", cwd=eproj)
+            tenx("new", "epic", "Scaffold Epic", cwd=eproj)
+            tenx("new", "spec", "Scaffold Spec", "--epic", "EPC-001", cwd=eproj)
+            strip_discipline(eproj)
+
+            # 1. Draft epic with template boilerplate emits info, not error/warning
+            r = tenx("validate", "--json", cwd=eproj)
+            rj = json.loads(r.stdout)
+            infos = {i["rule"] for i in rj.get("info", [])}
+            check("SPC-027 T1: draft epic boilerplate emits info",
+                  "epic-template-unfilled" in infos)
+            check("SPC-027 T1: draft epic has no errors",
+                  len(rj.get("errors", [])) == 0)
+
+            # 2. In-progress epic emits warning
+            tenx("set", "EPC-001", "status", "in_progress", cwd=eproj)
+            r = tenx("validate", "--json", cwd=eproj)
+            rj = json.loads(r.stdout)
+            warns = {w["rule"] for w in rj.get("warnings", [])}
+            check("SPC-027 T1: in_progress epic boilerplate emits warning",
+                  "epic-template-unfilled" in warns)
+
+            # 3. In-review epic emits error
+            tenx("set", "EPC-001", "status", "in_review", cwd=eproj)
+            r = tenx("validate", "--json", cwd=eproj, expect_rc=1)
+            rj = json.loads(r.stdout)
+            errs = {e["rule"] for e in rj.get("errors", [])}
+            check("SPC-027 T1: in_review epic boilerplate emits error",
+                  "epic-template-unfilled" in errs)
+
+            # 4. Attempting to mark complete is blocked by the evidence gate
+            r = tenx("set", "EPC-001", "status", "complete", cwd=eproj, expect_rc=2)
+            check("SPC-027 T2: evidence gate blocks complete on boilerplate epic",
+                  "unpopulated or contains scaffold template boilerplate" in r.stderr)
+
+            # 5. Populating epic body with real content resolves errors and warnings
+            ep_file = next((eproj / ".tenx" / "epics").glob("EPC-001-*.md"))
+            ep_content = (
+                "---\nid: EPC-001\ntype: epic\ntitle: Real Epic\n"
+                "status: in_progress\ncreated: 2026-01-01\nupdated: 2026-01-01\n---\n\n"
+                "## Objective\n\nReal substantial objective for the epic without any boilerplate.\n\n"
+                "## Key results\n\n- Key result 1: verified end-to-end.\n"
+            )
+            ep_file.write_text(ep_content, encoding="utf-8")
+            r = tenx("validate", "--json", cwd=eproj)
+            rj = json.loads(r.stdout)
+            check("SPC-027 T3: populated epic body validates clean without template errors",
+                  "epic-template-unfilled" not in {e["rule"] for e in rj.get("errors", [])}
+                  and "epic-template-unfilled" not in {w["rule"] for w in rj.get("warnings", [])})
+        finally:
+            shutil.rmtree(eproj, ignore_errors=True)
 
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

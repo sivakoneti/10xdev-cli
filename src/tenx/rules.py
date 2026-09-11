@@ -8,6 +8,7 @@ can run `tenx validate` at any time to self-correct.
 from __future__ import annotations
 
 import datetime as dt
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -97,6 +98,15 @@ RULE_CATALOG: dict[str, tuple[str, str]] = {
                               "spec body lacks required sections "
                               "(param: spec_sections, default "
                               "Summary,Validation)"),
+    "epic-missing-sections": ("warning",
+                              "epic body lacks required objective/overview "
+                              "section (param: epic_sections, default "
+                              "Objective|Overview|Goal|Summary)"),
+    "epic-template-unfilled": ("warning",
+                               "epic body is empty or contains unfilled "
+                               "scaffold template boilerplate (warning in "
+                               "draft/in_progress, error in in_review/"
+                               "complete)"),
     "derived-status-drift": ("error",
                              "authored spec status disagrees with the status "
                              "derived from its tickets (the 10X checkpoint "
@@ -291,6 +301,7 @@ def validate(project_root: Path, harness: Harness | None = None) -> RuleSet:
     _rule_epic_refs(harness, rs)
     _rule_tickets(harness, rs)
     _rule_spec_sections(harness, rs)
+    _rule_epic_body(harness, rs)
     _rule_derived_drift(harness, rs)
     _rule_epic_drift(harness, rs)
     _rule_convention_index(project_root, harness, rs)
@@ -485,6 +496,73 @@ def _rule_spec_sections(harness: Harness, rs: RuleSet) -> None:
                    f"{s.id}: body missing required section(s): "
                    + ", ".join(f"'## {m}'" for m in missing),
                    artifact_id=s.id)
+
+
+EPIC_BOILERPLATE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"One paragraph: (the|what) outcome this epic delivers", re.IGNORECASE),
+     "scaffold objective placeholder"),
+    (re.compile(r"reduce p95 latency to <200ms", re.IGNORECASE),
+     "scaffold key result placeholder"),
+    (re.compile(r"What this epic deliberately covers\.", re.IGNORECASE),
+     "scaffold scope placeholder"),
+    (re.compile(r"This section prevents agent drift\.", re.IGNORECASE),
+     "scaffold non-goals placeholder"),
+    (re.compile(r"Measurable definition of done for the epic\.", re.IGNORECASE),
+     "scaffold definition of done placeholder"),
+    (re.compile(r"What this epic deliberately does not do\.", re.IGNORECASE),
+     "scaffold out-of-scope placeholder"),
+    (re.compile(r"^\s*-\s*KR\d+\s*—\s*$", re.MULTILINE),
+     "unfilled key result item"),
+    (re.compile(r"^\s*-\s*\[\s*\]\s*M\d+\s*—\s*$", re.MULTILINE),
+     "unfilled milestone item"),
+]
+
+
+def _rule_epic_body(harness: Harness, rs: RuleSet) -> None:
+    """Validate epic content: ensure epics have substance, not raw templates."""
+    allowed_secs = [x.strip() for x in str(
+        rs.params.get("epic_sections",
+                      "Objective,Overview,Goal,Summary,Vision,Problem statement")
+    ).split(",") if x.strip()]
+    min_chars = int(rs.params.get("min_epic_chars", 40))
+
+    for e in harness.by_type("epic"):
+        if e.parse_error or e.status == "archived":
+            continue
+        body = e.body or ""
+        sev = ("info" if e.status == "draft"
+               else "warning" if e.status == "in_progress"
+               else "error")
+
+        # 1. Section check
+        if not any(f"## {sec}" in body for sec in allowed_secs):
+            sec_sev = "info" if e.status == "draft" else "warning"
+            rs.add("epic-missing-sections", sec_sev,
+                   f"{e.id}: body missing required objective section (one of "
+                   + ", ".join(f"'## {s}'" for s in allowed_secs[:3]) + ")",
+                   artifact_id=e.id)
+
+        # 2. Min substance check
+        text_content = "\n".join(
+            ln for ln in body.splitlines()
+            if ln.strip() and not ln.lstrip().startswith("#")
+        ).strip()
+        if len(text_content) < min_chars:
+            rs.add("epic-template-unfilled", sev,
+                   f"{e.id}: body has < {min_chars} chars of substance; "
+                   "flesh out the objective, scope, and key results",
+                   artifact_id=e.id)
+            continue
+
+        # 3. Scaffold boilerplate placeholders
+        hits: list[str] = []
+        for pat, desc in EPIC_BOILERPLATE_PATTERNS:
+            if pat.search(body):
+                hits.append(desc)
+        if hits:
+            rs.add("epic-template-unfilled", sev,
+                   f"{e.id}: body contains unfilled scaffold template boilerplate: "
+                   + ", ".join(hits), artifact_id=e.id)
 
 
 def _rule_derived_drift(harness: Harness, rs: RuleSet) -> None:

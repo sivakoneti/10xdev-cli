@@ -102,7 +102,7 @@ def check_evidence_gate(project_root: Path, harness: Harness, art: Artifact,
             f"{len(errs)} validation error(s) on {art.id} - fix first "
             f"(run `tenx validate`): {errs[0].message}")
 
-    # 2. spec: every ticket must be done
+    # 2. spec: every ticket must be done; epic: body must be populated
     if art.type == "spec":
         tix = art.tickets
         open_tix = [t for t in tix if str(t.get("status", "todo")) != "done"]
@@ -111,6 +111,14 @@ def check_evidence_gate(project_root: Path, harness: Harness, art: Artifact,
             more = f" (+{len(open_tix) - 5} more)" if len(open_tix) > 5 else ""
             reasons.append(
                 f"{len(open_tix)} ticket(s) not done: {ids}{more}")
+    elif art.type == "epic":
+        tmpl_errs = [f for f in ruleset.findings
+                     if (f.artifact_id or "") == art.id
+                     and f.rule in ("epic-template-unfilled", "epic-missing-sections")]
+        if tmpl_errs:
+            reasons.append(
+                f"epic body is unpopulated or contains scaffold template boilerplate - "
+                f"flesh out objective and scope before completing: {tmpl_errs[0].message}")
 
     # 3. evidence linked
     if not _has_evidence_field(art) and not _has_evidence_log(project_root, art.id):

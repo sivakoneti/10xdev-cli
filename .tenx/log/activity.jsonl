@@ -162,3 +162,16 @@
 {"ts": "2026-08-26T13:34:41+00:00", "type": "progress", "actor": "agent", "message": "github sync push to sivakoneti/10xdev-cli: 3 created, 0 updated"}
 {"ts": "2026-09-11T02:11:48+00:00", "type": "progress", "actor": "agent", "message": "feat(scope): define development vs operational execution boundary in agent hooks, protocol, and skills"}
 {"ts": "2026-09-11T02:15:39+00:00", "type": "progress", "actor": "agent", "message": "release v0.20.0: scope boundary between codebase engineering and operational execution"}
+{"ts": "2026-09-11T02:18:31+00:00", "type": "progress", "actor": "agent", "message": "fix(sync): support gh auth token resolution for update check and sync"}
+{"ts": "2026-09-11T12:19:22+00:00", "type": "progress", "actor": "agent", "message": "Started SPC-027: Epic body and template validation rules", "ref": "SPC-027"}
+{"ts": "2026-09-11T12:21:04+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-027-T1: in_progress -> in_progress", "ref": "SPC-027"}
+{"ts": "2026-09-11T12:23:12+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-027-T1: in_progress -> done", "ref": "SPC-027"}
+{"ts": "2026-09-11T12:23:12+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-027-T2: todo -> done", "ref": "SPC-027"}
+{"ts": "2026-09-11T12:23:12+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-027-T3: todo -> done", "ref": "SPC-027"}
+{"ts": "2026-09-11T12:23:15+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-027-T4: todo -> in_progress", "ref": "SPC-027"}
+{"ts": "2026-09-11T12:27:26+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-027-T4: in_progress -> done", "ref": "SPC-027"}
+{"ts": "2026-09-11T12:27:26+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-027-T5: todo -> in_progress", "ref": "SPC-027"}
+{"ts": "2026-09-11T12:27:42+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-027-T5: in_progress -> done", "ref": "SPC-027"}
+{"ts": "2026-09-11T12:27:44+00:00", "type": "progress", "actor": "agent", "message": "Completed SPC-027: Epic body completeness and template boilerplate validation", "ref": "SPC-027"}
+{"ts": "2026-09-11T12:27:48+00:00", "type": "progress", "actor": "agent", "message": "Completed EPC-017: Epic artifact discipline and template enforcement", "ref": "EPC-017"}
+{"ts": "2026-09-11T12:38:06+00:00", "type": "progress", "actor": "agent", "message": "release v0.21.0: epic artifact discipline — validate epic body substance and block evidence gate on unpopulated boilerplate epics", "ref": "EPC-017"}

@@ -5,33 +5,33 @@ title: Rollout readiness — CI for the harness + strict self-enforcement
 status: complete
 created: 2026-08-26
 updated: 2026-08-26
+specs:
+  - SPC-024
 ---
 
 ## Objective
 
-One paragraph: the outcome this epic delivers and why it matters. Name who
-benefits (the user/customer) and frame the problem from their point of view
-— start with the user and work backwards.
+Establish complete automated CI verification and strict self-enforcement for the tenx repository itself. Enable commit-gate enforcement on all commits and run smoke test suites across supported Python versions (3.10, 3.11, 3.12) to ensure release readiness.
 
 ## Key results
 
-Measurable outcomes that prove the objective was met (2-5). Each must be
-verifiable, not an activity: "reduce p95 latency to <200ms", not "improve
-performance".
-
-- KR1 —
-- KR2 —
+- KR1 — GitHub Actions CI matrix running smoke tests across Python 3.10, 3.11, and 3.12 on pull requests and pushes.
+- KR2 — Strict `commit_gate: on` activated for tenx development.
+- KR3 — Zero regressions on cross-version Python runtime compatibility.
 
 ## Scope
 
-- What this epic deliberately covers.
+- GitHub Actions workflow configuration (`.github/workflows/ci.yml`).
+- Harness configuration enabling `commit_gate: on` in `.tenx/config.yaml`.
+- Compatibility fixes for Python 3.10 ISO timestamp parsing.
 
 ## Non-goals
 
-- Things that could reasonably be goals but are explicitly NOT. This section
-  prevents agent drift.
+- Supporting legacy Python versions below 3.10.
+- Setting up external package publishing automations outside standard release flows.
 
 ## Milestones
 
-- [ ] M1 —
-- [ ] M2 —
+- [x] M1 — Create GitHub Actions CI workflow covering Python 3.10, 3.11, and 3.12 (SPC-024).
+- [x] M2 — Activate strict commit-gate in tenx configuration (SPC-024).
+- [x] M3 — Fix py3.10 git timestamp parsing and verify CI green (SPC-024).
