@@ -54,14 +54,32 @@ def _token_from_git_credentials() -> str | None:
     return None
 
 
+def _token_from_gh_cli() -> str | None:
+    """SPC-024 / QoL: try resolving auth token from `gh auth token` if gh is installed."""
+    try:
+        res = subprocess.run(
+            ["gh", "auth", "token"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        tok = res.stdout.strip()
+        return tok if tok and res.returncode == 0 else None
+    except Exception:
+        return None
+
+
 def resolve_token() -> str:
     tok = (os.environ.get("TENX_GITHUB_TOKEN")
            or os.environ.get("GITHUB_TOKEN")
-           or _token_from_git_credentials())
+           or os.environ.get("GH_TOKEN")
+           or _token_from_git_credentials()
+           or _token_from_gh_cli())
     if not tok:
         raise SyncError(
-            "no GitHub token found. Set TENX_GITHUB_TOKEN or GITHUB_TOKEN, "
-            "or store credentials in ~/.git-credentials.")
+            "no GitHub token found. Set TENX_GITHUB_TOKEN, GITHUB_TOKEN, GH_TOKEN, "
+            "store credentials in ~/.git-credentials, or log in via `gh auth login`.")
     return tok
 
 
