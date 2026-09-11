@@ -46,6 +46,9 @@ writing code:
 
 ### Hard rules (non-negotiable)
 
+- Scope: tenx governs codebase engineering (code, architecture, tests, docs).
+  Operational execution (running pipelines, workflows, scripts, generating
+  media/assets) runs directly without creating or updating tenx artifacts.
 - Track work in the harness: before non-trivial changes, find or create the
   epic+spec (`tenx next`, `tenx show <ID>`); move tickets with
   `tenx ticket <SPEC> <TICKET> <status>`.
@@ -56,7 +59,6 @@ writing code:
 - A git pre-commit hook enforces this: commits are rejected while
   `tenx validate` reports errors. Do not bypass it with `--no-verify`
   unless the human explicitly says to.
-
 Useful: `tenx next` (what to work on), `tenx show <ID>` (full artifact),
 `tenx log "msg" --ref <ID>` (write back), `tenx validate` (self drift),
 `tenx watchdog` / `tenx triage` (what needs attention).
@@ -645,6 +647,8 @@ It lists what we are building, the active specs, conventions, recent
 activity, and the operating protocol. Follow that protocol.
 
 HARD RULES (non-negotiable):
+- Scope: tenx governs codebase engineering. Operational execution (running
+  pipelines, scripts, tools, generating assets) runs directly without tenx.
 - Track work in the harness: before non-trivial changes, find or create the
   epic+spec; move tickets with `tenx ticket <SPEC> <TICKET> <status>`.
 - Write back as you go: `tenx log "<what changed>" --ref <ID>`.
@@ -653,7 +657,6 @@ HARD RULES (non-negotiable):
 - Never archive, merge, or delete without explicit human/operator approval.
 - A git pre-commit hook rejects commits while `tenx validate` has errors;
   do not bypass it with `--no-verify` unless the human explicitly says so.
-
 Updates: the tenx CLI self-updates. At session start run
 `tenx update --check`; if it reports a newer version, tell the human
 and suggest `tenx update` to install it."""

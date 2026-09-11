@@ -242,6 +242,12 @@ Landing discipline (applies to every ticket you finish):
   concrete failure instead of looping.
 - **Human lands it.** Agents recommend land-or-bounce with evidence; the
   human approves the final merge/archive.
+Scope boundary:
+- **Codebase development only.** The tenx loop applies only when designing,
+  developing, fixing, or modifying code, tools, skills, or documentation.
+- **Never for operational execution.** Running pipelines, workflows, scripts,
+  or generating assets/deliverables is an operational runtime task. Execute
+  directly without creating or modifying tenx epics, specs, or tickets.
 
 Rules:
 - Never invent process facts; they live in `.tenx/` artifacts.

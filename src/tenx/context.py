@@ -25,23 +25,25 @@ PROTOCOL = """## Operating protocol (always follow)
    `tenx update` to install it. Never block on this — offline is fine.
 2. Not sure what tenx can do? Run `tenx capabilities` for the full
    command/tool catalog with when-to-use guidance.
-3. Before planning or coding, load the artifacts relevant to your task
+3. Scope: tenx governs codebase engineering (code, architecture, tests, docs).
+   Operational tasks (running pipelines, workflows, scripts, generating
+   deliverables) run directly without creating or updating tenx artifacts.
+4. Before planning or coding, load the artifacts relevant to your task
    (`tenx show <ID>`), and read `.tenx/conventions/INDEX.md` plus every
    convention it lists. Conventions bind you.
-4. If unsure what to do next, run `tenx next` and do the top item. To
+5. If unsure what to do next, run `tenx next` and do the top item. To
    spot blocked or stalled work, run `tenx watchdog` — it ranks what needs
    attention and says whether each item is being handled.
-5. Keep ticket statuses in sync as you work:
+6. Keep ticket statuses in sync as you work:
    `tenx ticket <SPEC-ID> <TICKET-ID> <status>`.
-6. After significant work, write back: `tenx log "what changed" --ref <ID>`.
+7. After significant work, write back: `tenx log "what changed" --ref <ID>`.
    When you ship a behavior change, also note it in the changelog (docs-sync):
    `tenx changelog add "what changed" --ref <ID>` — the evidence gate requires
    a changelog entry before a spec/epic can be marked complete.
-7. Before ending a session run `tenx validate` and fix any drift you
+8. Before ending a session run `tenx validate` and fix any drift you
    introduced. Never leave new errors behind.
-8. Process facts live in `.tenx/` artifacts. Do not invent them; if a
+9. Process facts live in `.tenx/` artifacts. Do not invent them; if a
    convention conflicts with a spec, stop and ask the human."""
-
 
 def _status_counts(items: list) -> dict[str, int]:
     counts: dict[str, int] = {}
