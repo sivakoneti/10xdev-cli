@@ -213,16 +213,21 @@ def _tooldefs() -> list[dict[str, Any]]:
         {"name": "tenx_dispatch",
          "description": "Dispatch a ticket to an isolated worker in a "
                         "git worktree: handles worktree creation, runner "
-                        "command execution, and structured outcome receipt.",
+                        "command execution, visual multiplexer projection "
+                        "(Herdr workspace / tmux window), and structured outcome receipt.",
          "inputSchema": {"type": "object", "properties": {
              "spec": {**S, "description": "spec id, e.g. SPC-001"},
              "ticket": {**S, "description": "ticket id, e.g. SPC-001-T1"},
              "agent": {"type": "string",
                        "description": "agent harness: pi, codex, prime, claude, grok, dsh (default pi)"},
+             "visual": {**B, "description": "project subagent visually into active terminal multiplexer (Herdr workspace/tab, tmux window)"},
+             "multiplexer": {"type": "string", "enum": ["auto", "herdr", "tmux", "none"],
+                             "description": "multiplexer adapter (default auto)"},
+             "focus": {**B, "description": "focus the newly created multiplexer window/workspace (default false)"},
              "dry_run": {**B, "description": "inspect worktree and command without executing"},
              "timeout": {"type": "integer", "description": "timeout in seconds"}},
              "required": ["spec", "ticket"]},
-         "handler": mk(C.cmd_dispatch, {"agent": "pi", "dry_run": False, "timeout": 600, "json": False})},
+         "handler": mk(C.cmd_dispatch, {"agent": "pi", "visual": False, "multiplexer": "auto", "focus": False, "dry_run": False, "timeout": 600, "json": False})},
         {"name": "tenx_changelog",
          "description": "Docs-sync: manage the Keep-a-Changelog "
                         "CHANGELOG.md. action=show prints it; action=add "

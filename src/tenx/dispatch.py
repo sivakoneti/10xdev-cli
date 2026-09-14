@@ -18,6 +18,12 @@ from typing import Any
 
 from .artifacts import Harness, load_harness
 from .discovery import code_root
+from .multiplexers import (
+    MultiplexerTarget,
+    ProjectionPlan,
+    detect_multiplexer,
+    plan_visual_projection,
+)
 
 
 TICKET_BRIEF_TEMPLATE = """# TICKET EXECUTION BRIEF — {spec_id} / {ticket_id}: {ticket_title}
@@ -275,6 +281,9 @@ def dispatch_ticket(
     agent: str = "pi",
     dry_run: bool = False,
     timeout: int | None = 600,
+    visual: bool = False,
+    multiplexer: str = "auto",
+    focus: bool = False,
 ) -> dict[str, Any]:
     """Execute a ticket in an isolated git worktree with the specified agent."""
     harness = load_harness(project_root)
@@ -291,8 +300,11 @@ def dispatch_ticket(
     brief_file = worktree_path / "TICKET_BRIEF.md"
     agent_cmd = resolve_agent_command(agent, worktree_path, brief_file)
 
+    mux_target = detect_multiplexer(preference="none" if not visual else multiplexer)
+    projection = plan_visual_projection(mux_target, ticket_id, worktree_path, agent_cmd.cmd, focus=focus) if visual else None
+
     if dry_run:
-        return {
+        res = {
             "status": "dry_run",
             "spec_id": spec_id,
             "ticket_id": ticket_id,
@@ -301,7 +313,17 @@ def dispatch_ticket(
             "agent": agent_cmd.agent,
             "command": agent_cmd.cmd,
             "brief_preview": brief_content[:400] + "...",
+            "visual": visual,
+            "multiplexer": mux_target.name,
         }
+        if projection:
+            res["projection"] = {
+                "multiplexer": projection.multiplexer,
+                "summary": projection.summary,
+                "create_cmd": projection.create_cmd,
+                "run_cmd": projection.run_cmd,
+            }
+        return res
 
     # Setup worktree
     try:
@@ -313,16 +335,41 @@ def dispatch_ticket(
     wt_brief = wt_dir / "TICKET_BRIEF.md"
     wt_brief.write_text(brief_content, encoding="utf-8")
 
-    # Execute agent command
-    cmd = agent_cmd.cmd
-    if not shutil.which(cmd[0]):
-        return {
-            "status": "error",
-            "error": f"Agent executable '{cmd[0]}' not found on PATH. Install it or use another agent with --agent.",
-            "worktree_path": str(wt_dir),
-            "branch": f"tenx/{ticket_id}",
-        }
+    # If visual projection is requested, launch through multiplexer
+    if visual and projection:
+        # Create multiplexer container (workspace or window)
+        try:
+            res_mux = subprocess.run(projection.create_cmd, capture_output=True, text=True, timeout=10)
+            if res_mux.returncode != 0:
+                return {
+                    "status": "error",
+                    "spec_id": spec_id,
+                    "ticket_id": ticket_id,
+                    "error": f"Multiplexer creation failed ({projection.multiplexer}): {res_mux.stderr.strip() or res_mux.stdout.strip()}",
+                }
 
+            # If multiplexer requires a secondary run step (e.g. herdr pane run)
+            if projection.run_cmd:
+                subprocess.run(projection.run_cmd, capture_output=True, text=True, timeout=10)
+
+            return {
+                "status": "dispatched",
+                "spec_id": spec_id,
+                "ticket_id": ticket_id,
+                "worktree_path": str(wt_dir),
+                "branch": f"tenx/{ticket_id}",
+                "multiplexer": projection.multiplexer,
+                "projection_summary": projection.summary,
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "spec_id": spec_id,
+                "ticket_id": ticket_id,
+                "error": f"Failed to project into multiplexer: {e}",
+            }
+
+    # Execute headless agent command
     try:
         proc = subprocess.run(
             cmd,

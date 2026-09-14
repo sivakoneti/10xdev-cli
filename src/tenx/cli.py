@@ -1072,17 +1072,32 @@ def cmd_dispatch(args: argparse.Namespace) -> int:
         agent=args.agent,
         dry_run=args.dry_run,
         timeout=args.timeout,
+        visual=getattr(args, "visual", False),
+        multiplexer=getattr(args, "multiplexer", "auto"),
+        focus=getattr(args, "focus", False),
     )
     if getattr(args, "json", False):
         print(json.dumps(res, indent=2))
-        return 0 if res.get("status") in ("completed", "dry_run") else 1
+        return 0 if res.get("status") in ("completed", "dry_run", "dispatched") else 1
 
     if res.get("status") == "dry_run":
         print(f"Dispatch plan for {res['spec_id']} / {res['ticket_id']}:")
-        print(f"  worktree: {res['worktree_path']}")
-        print(f"  branch:   {res['branch']}")
-        print(f"  agent:    {res['agent']}")
-        print(f"  command:  {' '.join(res['command'])}")
+        print(f"  worktree:    {res['worktree_path']}")
+        print(f"  branch:      {res['branch']}")
+        print(f"  agent:       {res['agent']}")
+        print(f"  command:     {' '.join(res['command'])}")
+        if res.get("visual"):
+            print(f"  visual:      True (multiplexer: {res.get('multiplexer')})")
+        if res.get("projection"):
+            proj = res["projection"]
+            print(f"  projection:  {proj['summary']}")
+            print(f"  create cmd:  {' '.join(proj['create_cmd'])}")
+        return 0
+
+    if res.get("status") == "dispatched":
+        print(f"Ticket {res['ticket_id']} visually dispatched into {res.get('multiplexer', 'multiplexer')}.")
+        print(f"  projection: {res.get('projection_summary')}")
+        print(f"  branch:     {res['branch']}")
         return 0
 
     if res.get("status") == "completed":
@@ -1629,6 +1644,13 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("ticket", help="ticket ID, e.g. SPC-001-T1")
     sp.add_argument("--agent", default="pi",
                     help="agent harness to execute (pi, codex, prime, claude, grok, dsh; default: pi)")
+    sp.add_argument("--visual", action="store_true",
+                    help="project subagent visually into active terminal multiplexer (Herdr workspace, tmux window)")
+    sp.add_argument("--multiplexer", default="auto",
+                    choices=["auto", "herdr", "tmux", "none"],
+                    help="multiplexer adapter to use with --visual (default: auto)")
+    sp.add_argument("--focus", action="store_true",
+                    help="focus the newly created multiplexer workspace/window (default: False/--no-focus)")
     sp.add_argument("--dry-run", action="store_true",
                     help="show worktree path and launch command without executing")
     sp.add_argument("--timeout", type=int, default=600,

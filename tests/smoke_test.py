@@ -1835,7 +1835,18 @@ def main() -> int:
             check("SPC-028 T2: dispatch dry-run for prime-agent",
                   dr_prime_j.get("agent") == "prime-agent" and "prime run" in " ".join(dr_prime_j.get("command", [])))
 
-            # 4. Test tenx-dispatch skill installation
+            # 4. Test visual dispatch dry-run for herdr and tmux
+            dr_vis_herdr = tenx("dispatch", "SPC-001", "SPC-001-T1", "--agent", "pi", "--visual", "--multiplexer", "herdr", "--dry-run", "--json", cwd=dproj).stdout
+            dr_vh_j = json.loads(dr_vis_herdr)
+            check("SPC-029 T3: visual dispatch dry-run for herdr",
+                  dr_vh_j.get("visual") is True and dr_vh_j.get("multiplexer") == "herdr" and "projection" in dr_vh_j and "workspace" in dr_vh_j["projection"]["create_cmd"])
+
+            dr_vis_tmux = tenx("dispatch", "SPC-001", "SPC-001-T1", "--agent", "pi", "--visual", "--multiplexer", "tmux", "--dry-run", "--json", cwd=dproj).stdout
+            dr_vt_j = json.loads(dr_vis_tmux)
+            check("SPC-029 T3: visual dispatch dry-run for tmux",
+                  dr_vt_j.get("visual") is True and dr_vt_j.get("multiplexer") == "tmux" and "projection" in dr_vt_j and "new-window" in dr_vt_j["projection"]["create_cmd"])
+
+            # 5. Test tenx-dispatch skill installation
             skills_out = tenx("skills", "list", cwd=dproj).stdout
             check("SPC-028 T3: tenx-dispatch skill listed",
                   "tenx-dispatch" in skills_out)

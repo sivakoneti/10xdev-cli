@@ -190,3 +190,19 @@
 {"ts": "2026-09-14T18:26:48+00:00", "type": "blocker", "actor": "agent", "message": "evidence gate BLOCKED EPC-018 -> complete: no evidence linked - log work with `tenx log ... --ref EPC-018`, or attach it with `tenx set EPC-018 evidence <link/command>`, or re-run with --force (human override)", "ref": "EPC-018"}
 {"ts": "2026-09-14T18:27:29+00:00", "type": "progress", "actor": "agent", "message": "Completed EPC-018: subagent ticket dispatch system with zero-token context briefs, git worktree runner, and universal skill", "ref": "EPC-018"}
 {"ts": "2026-09-14T18:51:50+00:00", "type": "progress", "actor": "agent", "message": "Release v0.22.0: subagent ticket dispatch system (EPC-018 / SPC-028)"}
+{"ts": "2026-09-14T18:56:34+00:00", "type": "progress", "actor": "agent", "message": "github sync push to sivakoneti/10xdev-cli: 4 created, 0 updated"}
+{"ts": "2026-09-14T19:18:59+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-029-T1: todo -> in_progress", "ref": "SPC-029"}
+{"ts": "2026-09-14T19:24:03+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-029-T1: in_progress -> done", "ref": "SPC-029"}
+{"ts": "2026-09-14T19:24:19+00:00", "type": "progress", "actor": "agent", "message": "Implemented SPC-029-T1: Multiplexer detection and visual projection engine for Herdr and Tmux", "ref": "SPC-029"}
+{"ts": "2026-09-14T19:24:58+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-029-T2: todo -> in_progress", "ref": "SPC-029"}
+{"ts": "2026-09-14T19:30:07+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-029-T2: in_progress -> done", "ref": "SPC-029"}
+{"ts": "2026-09-14T19:30:45+00:00", "type": "progress", "actor": "agent", "message": "Implemented SPC-029-T2: Wired --visual, --multiplexer, and --focus options into CLI and MCP tools", "ref": "SPC-029"}
+{"ts": "2026-09-14T19:30:54+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-029-T3: todo -> in_progress", "ref": "SPC-029"}
+{"ts": "2026-09-14T19:34:10+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-029-T3: in_progress -> done", "ref": "SPC-029"}
+{"ts": "2026-09-14T19:34:22+00:00", "type": "progress", "actor": "agent", "message": "Implemented SPC-029-T3: Smoke test coverage for visual multiplexer dry-run on herdr and tmux", "ref": "SPC-029"}
+{"ts": "2026-09-14T19:34:35+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-029-T4: todo -> in_progress", "ref": "SPC-029"}
+{"ts": "2026-09-14T19:35:47+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-029-T4: in_progress -> done", "ref": "SPC-029"}
+{"ts": "2026-09-14T19:35:55+00:00", "type": "progress", "actor": "agent", "message": "Implemented SPC-029-T4: Updated tenx-dispatch skill with Herdr sidenav visual monitoring instructions", "ref": "SPC-029"}
+{"ts": "2026-09-14T19:37:19+00:00", "type": "blocker", "actor": "agent", "message": "evidence gate BLOCKED EPC-019 -> complete: no evidence linked - log work with `tenx log ... --ref EPC-019`, or attach it with `tenx set EPC-019 evidence <link/command>`, or re-run with --force (human override)", "ref": "EPC-019"}
+{"ts": "2026-09-14T19:37:28+00:00", "type": "progress", "actor": "agent", "message": "Completed EPC-019 / SPC-029: Visual multiplexer subagent projection for Herdr workspaces (in sidenav) and tmux windows", "ref": "EPC-019"}
+{"ts": "2026-09-14T19:41:44+00:00", "type": "progress", "actor": "agent", "message": "Release v0.23.0: Visual multiplexer subagent dispatch for Herdr and Tmux"}

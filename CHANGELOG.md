@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.23.0] - 2026-09-15
+
+### Added
+- Visual multiplexer projection for tenx dispatch (Herdr workspaces in sidenav and tmux windows) (SPC-029)
+
 ## [v0.22.0] - 2026-09-15
 
 ### Added
