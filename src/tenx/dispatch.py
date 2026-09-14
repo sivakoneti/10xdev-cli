@@ -23,7 +23,9 @@ from .multiplexers import (
     ProjectionPlan,
     detect_multiplexer,
     plan_visual_projection,
+    position_herdr_workspace_below_parent,
 )
+from .router import resolve_model_route
 
 
 TICKET_BRIEF_TEMPLATE = """# TICKET EXECUTION BRIEF — {spec_id} / {ticket_id}: {ticket_title}
@@ -163,76 +165,78 @@ class AgentCommand:
     notes: str = ""
 
 
-def resolve_agent_command(agent: str, worktree_dir: Path, brief_path: Path) -> AgentCommand:
-    """Resolve headless CLI command for given harness."""
+def resolve_agent_command(
+    agent: str,
+    worktree_dir: Path,
+    brief_path: Path,
+    model: Optional[str] = None,
+    thinking: Optional[str] = None,
+) -> AgentCommand:
+    """Resolve CLI command for given harness and model."""
     agent_norm = agent.lower().strip()
     brief_rel = brief_path.name
+    prompt = (
+        f"Read {brief_rel} and implement the ticket completely. "
+        "Run tests and tenx validate before finishing."
+    )
 
     if agent_norm in ("codex", "codex-cli"):
-        prompt = (
-            f"Read `{brief_rel}` and implement the ticket completely. "
-            "Run tests and `tenx validate` before finishing."
-        )
+        cmd = ["codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "-C", str(worktree_dir)]
+        if model:
+            cmd.extend(["--model", model])
+        cmd.append(prompt)
         return AgentCommand(
             agent="codex",
-            cmd=["codex", "exec", "--dangerously-bypass-approvals-and-sandbox",
-                 "-C", str(worktree_dir), prompt],
+            cmd=cmd,
             is_headless=True,
             notes="Codex CLI headless execution"
         )
-    elif agent_norm in ("prime", "prime-agent"):
-        prompt = (
-            f"Read `{brief_rel}` and implement the ticket completely. "
-            "Run tests and `tenx validate` before finishing."
-        )
+    elif agent_norm in ("omp", "oh-my-pi"):
+        cmd = ["omp", "-p", "--cwd", str(worktree_dir)]
+        if model:
+            cmd.extend(["--model", model])
+        if thinking:
+            cmd.extend(["--thinking", thinking])
+        cmd.append(prompt)
         return AgentCommand(
-            agent="prime-agent",
-            cmd=["prime", "run", "-C", str(worktree_dir), prompt],
+            agent="omp",
+            cmd=cmd,
             is_headless=True,
-            notes="Prime Agent headless execution"
+            notes="Oh My Pi agent execution"
         )
     elif agent_norm in ("pi", "pi-agent"):
-        prompt = (
-            f"Read `{brief_rel}` and implement the ticket completely. "
-            "Run tests and `tenx validate` before finishing."
-        )
+        cmd = ["pi", "-p"]
+        if model:
+            cmd.extend(["--model", model])
+        if thinking:
+            cmd.extend(["--thinking", thinking])
+        cmd.append(prompt)
         return AgentCommand(
             agent="pi",
-            cmd=["pi", "-p", "--cwd", str(worktree_dir), prompt],
+            cmd=cmd,
             is_headless=True,
             notes="Pi coding agent headless mode"
         )
-    elif agent_norm in ("claude", "claude-code"):
-        prompt = (
-            f"Read `{brief_rel}` and implement the ticket completely. "
-            "Run tests and `tenx validate` before finishing."
-        )
+    elif agent_norm in ("prime", "prime-agent"):
+        cmd = ["prime-agent", "-p", "--cwd", str(worktree_dir)]
+        if model:
+            cmd.extend(["--model", model])
+        if thinking:
+            cmd.extend(["--thinking", thinking])
+        cmd.append(prompt)
         return AgentCommand(
-            agent="claude",
-            cmd=["claude", "-p", prompt],
+            agent="prime-agent",
+            cmd=cmd,
             is_headless=True,
-            notes="Claude Code print/headless mode"
-        )
-    elif agent_norm in ("dsh", "deepseek-harness"):
-        prompt = (
-            f"Read `{brief_rel}` and implement the ticket completely. "
-            "Run tests and `tenx validate` before finishing."
-        )
-        return AgentCommand(
-            agent="dsh",
-            cmd=["dsh", "run", "--workdir", str(worktree_dir), prompt],
-            is_headless=True,
-            notes="DeepSeek Harness run"
+            notes="Prime Agent execution"
         )
     else:
         # Generic fallback
-        prompt = (
-            f"Read `{brief_rel}` and implement the ticket completely. "
-            "Run tests and `tenx validate` before finishing."
-        )
+        bin_name = agent
+        cmd = [bin_name, "-p", prompt] if shutil.which(bin_name) else ["echo", f"Agent binary '{bin_name}' not found on PATH"]
         return AgentCommand(
             agent=agent,
-            cmd=[agent, "-p", prompt] if shutil.which(agent) else ["echo", f"Agent binary '{agent}' not found on PATH"],
+            cmd=cmd,
             is_headless=True,
             notes="Generic CLI adapter fallback"
         )
@@ -252,6 +256,15 @@ def setup_worktree(project_root: Path, ticket_id: str) -> Path:
     if not shutil.which("git"):
         raise RuntimeError("git binary not found on PATH")
 
+    # Resolve parent checkout HEAD commit to ensure strict baseline isolation
+    rev_res = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=str(project_root),
+        capture_output=True,
+        text=True,
+    )
+    parent_commit = rev_res.stdout.strip() if rev_res.returncode == 0 else "HEAD"
+
     # Check if branch exists
     res = subprocess.run(
         ["git", "branch", "--list", branch_name],
@@ -265,7 +278,8 @@ def setup_worktree(project_root: Path, ticket_id: str) -> Path:
     if branch_exists:
         cmd.extend([str(target_dir), branch_name])
     else:
-        cmd.extend(["-b", branch_name, str(target_dir)])
+        # Branch explicitly from the parent's current checkout HEAD commit
+        cmd.extend(["-b", branch_name, str(target_dir), parent_commit])
 
     run = subprocess.run(cmd, cwd=str(project_root), capture_output=True, text=True)
     if run.returncode != 0:
@@ -279,6 +293,8 @@ def dispatch_ticket(
     spec_id: str,
     ticket_id: str,
     agent: str = "pi",
+    model: Optional[str] = None,
+    thinking: Optional[str] = None,
     dry_run: bool = False,
     timeout: int | None = 600,
     visual: bool = False,
@@ -295,10 +311,14 @@ def dispatch_ticket(
     if not t_info:
         return {"status": "error", "error": f"Ticket '{ticket_id}' not found in '{spec_id}'"}
 
+    # Resolve model route via Bifrost and Agent Anti-Gravity
+    model_route = resolve_model_route(requested_model=model, tier=2)
+    active_model = model_route.model
+
     brief_content = build_ticket_brief(harness, spec, ticket_id, project_root)
     worktree_path = project_root / ".tenx" / "worktrees" / ticket_id
     brief_file = worktree_path / "TICKET_BRIEF.md"
-    agent_cmd = resolve_agent_command(agent, worktree_path, brief_file)
+    agent_cmd = resolve_agent_command(agent, worktree_path, brief_file, model=active_model, thinking=thinking)
 
     mux_target = detect_multiplexer(preference="none" if not visual else multiplexer)
     projection = plan_visual_projection(mux_target, ticket_id, worktree_path, agent_cmd.cmd, focus=focus) if visual else None
@@ -311,6 +331,14 @@ def dispatch_ticket(
             "worktree_path": str(worktree_path),
             "branch": f"tenx/{ticket_id}",
             "agent": agent_cmd.agent,
+            "model": active_model,
+            "model_route": {
+                "model": model_route.model,
+                "provider": model_route.provider,
+                "tier": model_route.tier,
+                "source": model_route.source,
+                "live": model_route.is_live,
+            },
             "command": agent_cmd.cmd,
             "brief_preview": brief_content[:400] + "...",
             "visual": visual,
@@ -348,18 +376,27 @@ def dispatch_ticket(
                     "error": f"Multiplexer creation failed ({projection.multiplexer}): {res_mux.stderr.strip() or res_mux.stdout.strip()}",
                 }
 
-            # If multiplexer is herdr, extract root_pane pane_id from json response or query it to run agent
+            # If multiplexer is herdr, extract workspace_id and pane_id from json response
             if projection.multiplexer == "herdr":
                 pane_id = None
+                child_ws_id = None
                 try:
                     out_json = json.loads(res_mux.stdout)
-                    pane_id = out_json.get("result", {}).get("root_pane", {}).get("pane_id")
+                    res_payload = out_json.get("result", {})
+                    child_ws_id = res_payload.get("workspace", {}).get("workspace_id")
+                    pane_id = res_payload.get("root_pane", {}).get("pane_id")
                 except Exception:
                     pass
 
+                # Reposition child workspace directly below parent in Herdr left sidebar
+                sock_path = os.environ.get("HERDR_SOCKET_PATH") or str(Path.home() / ".config" / "herdr" / "herdr.sock")
+                if child_ws_id and os.path.exists(sock_path):
+                    position_herdr_workspace_below_parent(sock_path, child_ws_id)
+
                 agent_cmd_str = " ".join(f'"{arg}"' if " " in arg else arg for arg in agent_cmd.cmd)
                 if pane_id:
-                    subprocess.run(["herdr", "pane", "run", pane_id, agent_cmd_str], capture_output=True, text=True, timeout=10)
+                    subprocess.run(["herdr", "pane", "send-text", pane_id, agent_cmd_str], capture_output=True, text=True, timeout=10)
+                    subprocess.run(["herdr", "pane", "send-keys", pane_id, "enter"], capture_output=True, text=True, timeout=10)
                 else:
                     # Fallback if parsing failed
                     subprocess.run(["herdr", "pane", "run", agent_cmd_str], capture_output=True, text=True, timeout=10)
@@ -389,7 +426,7 @@ def dispatch_ticket(
     # Execute headless agent command
     try:
         proc = subprocess.run(
-            cmd,
+            agent_cmd.cmd,
             cwd=str(wt_dir),
             capture_output=True,
             text=True,

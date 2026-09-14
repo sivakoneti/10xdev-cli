@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-09-15
+
+### Added
+- Hierarchical Herdr sidebar subagent placement via workspace.move, parent-commit git worktree isolation, multi-harness dispatch (omp, prime-agent, codex, pi), dynamic Bifrost model routing, and memory distillation (SPC-030)
+
 ## [v0.23.0] - 2026-09-15
 
 ### Added

@@ -7,3 +7,5 @@ build/
 
 # tenx runtime lockfile (advisory, never commit)
 .tenx/.lock
+.tenx/worktrees/
+.tenx/memory/

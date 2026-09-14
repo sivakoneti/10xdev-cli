@@ -212,14 +212,19 @@ def _tooldefs() -> list[dict[str, Any]]:
          "handler": mk(C.cmd_ticket_brief, {"json": False})},
         {"name": "tenx_dispatch",
          "description": "Dispatch a ticket to an isolated worker in a "
-                        "git worktree: handles worktree creation, runner "
+                        "git worktree: handles parent-commit worktree creation, runner "
                         "command execution, visual multiplexer projection "
-                        "(Herdr workspace / tmux window), and structured outcome receipt.",
+                        "(Herdr workspace with hierarchical sidebar positioning / tmux window), "
+                        "and dynamic Bifrost model routing.",
          "inputSchema": {"type": "object", "properties": {
              "spec": {**S, "description": "spec id, e.g. SPC-001"},
              "ticket": {**S, "description": "ticket id, e.g. SPC-001-T1"},
              "agent": {"type": "string",
-                       "description": "agent harness: pi, codex, prime, claude, grok, dsh (default pi)"},
+                       "description": "agent harness: pi, omp, prime, codex (default pi)"},
+             "model": {"type": "string",
+                       "description": "target model (routed via Bifrost/Agent Anti-Gravity)"},
+             "thinking": {"type": "string",
+                          "description": "thinking budget/mode (e.g. high, medium, low)"},
              "visual": {**B, "description": "project subagent visually into active terminal multiplexer (Herdr workspace/tab, tmux window)"},
              "multiplexer": {"type": "string", "enum": ["auto", "herdr", "tmux", "none"],
                              "description": "multiplexer adapter (default auto)"},
@@ -227,7 +232,7 @@ def _tooldefs() -> list[dict[str, Any]]:
              "dry_run": {**B, "description": "inspect worktree and command without executing"},
              "timeout": {"type": "integer", "description": "timeout in seconds"}},
              "required": ["spec", "ticket"]},
-         "handler": mk(C.cmd_dispatch, {"agent": "pi", "visual": False, "multiplexer": "auto", "focus": False, "dry_run": False, "timeout": 600, "json": False})},
+         "handler": mk(C.cmd_dispatch, {"agent": "pi", "model": None, "thinking": None, "visual": False, "multiplexer": "auto", "focus": False, "dry_run": False, "timeout": 600, "json": False})},
         {"name": "tenx_changelog",
          "description": "Docs-sync: manage the Keep-a-Changelog "
                         "CHANGELOG.md. action=show prints it; action=add "

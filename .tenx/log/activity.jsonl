@@ -208,3 +208,10 @@
 {"ts": "2026-09-14T19:41:44+00:00", "type": "progress", "actor": "agent", "message": "Release v0.23.0: Visual multiplexer subagent dispatch for Herdr and Tmux"}
 {"ts": "2026-09-14T19:44:54+00:00", "type": "progress", "actor": "agent", "message": "github sync push to sivakoneti/10xdev-cli: 4 created, 0 updated"}
 {"ts": "2026-09-14T19:51:22+00:00", "type": "progress", "actor": "agent", "message": "Dogfooding fix: Pass exact root_pane pane_id to herdr pane run upon workspace creation", "ref": "SPC-029"}
+{"ts": "2026-09-14T19:53:46+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-030-T1: todo -> in_progress", "ref": "SPC-030"}
+{"ts": "2026-09-14T20:12:01+00:00", "type": "progress", "actor": "agent", "message": "Started SPC-030-T1: Herdr socket workspace move and parent commit worktree branching", "ref": "SPC-030"}
+{"ts": "2026-09-14T20:12:30+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-030-T1: todo -> in_progress", "ref": "SPC-030"}
+{"ts": "2026-09-14T20:20:11+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-030-T1: in_progress -> done", "ref": "SPC-030"}
+{"ts": "2026-09-14T20:20:11+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-030-T2: todo -> done", "ref": "SPC-030"}
+{"ts": "2026-09-14T20:20:11+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-030-T3: todo -> done", "ref": "SPC-030"}
+{"ts": "2026-09-14T20:20:12+00:00", "type": "progress", "actor": "agent", "message": "Completed SPC-030 tickets: Herdr hierarchical sidebar placement, parent-commit worktree isolation, multi-harness adapters, dynamic Bifrost router, and memory distillation", "ref": "SPC-030"}

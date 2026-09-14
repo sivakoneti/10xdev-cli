@@ -1070,6 +1070,8 @@ def cmd_dispatch(args: argparse.Namespace) -> int:
         spec_id=args.spec.upper(),
         ticket_id=args.ticket,
         agent=args.agent,
+        model=getattr(args, "model", None),
+        thinking=getattr(args, "thinking", None),
         dry_run=args.dry_run,
         timeout=args.timeout,
         visual=getattr(args, "visual", False),
@@ -1085,6 +1087,8 @@ def cmd_dispatch(args: argparse.Namespace) -> int:
         print(f"  worktree:    {res['worktree_path']}")
         print(f"  branch:      {res['branch']}")
         print(f"  agent:       {res['agent']}")
+        if res.get("model"):
+            print(f"  model:       {res['model']}")
         print(f"  command:     {' '.join(res['command'])}")
         if res.get("visual"):
             print(f"  visual:      True (multiplexer: {res.get('multiplexer')})")
@@ -1643,7 +1647,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("spec", help="spec ID, e.g. SPC-001")
     sp.add_argument("ticket", help="ticket ID, e.g. SPC-001-T1")
     sp.add_argument("--agent", default="pi",
-                    help="agent harness to execute (pi, codex, prime, claude, grok, dsh; default: pi)")
+                    help="agent harness to execute (pi, omp, prime, codex; default: pi)")
+    sp.add_argument("--model", default=None,
+                    help="target model (e.g. google-antigravity/gemini-3.8-flash-high; dynamically routed via Bifrost)")
+    sp.add_argument("--thinking", default=None,
+                    help="thinking budget or mode (e.g. high, medium, low, off)")
     sp.add_argument("--visual", action="store_true",
                     help="project subagent visually into active terminal multiplexer (Herdr workspace, tmux window)")
     sp.add_argument("--multiplexer", default="auto",

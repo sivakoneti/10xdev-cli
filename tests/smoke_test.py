@@ -1851,6 +1851,51 @@ def main() -> int:
             check("SPC-028 T3: tenx-dispatch skill listed",
                   "tenx-dispatch" in skills_out)
 
+            # 6. Test SPC-030: Model Routing and Multi-Harness command builders (omp, prime-agent, codex)
+            from tenx.dispatch import resolve_agent_command
+            from tenx.router import resolve_model_route
+            from tenx.memory import MemoryDistiller, DistilledObservation
+
+            # Model routing verification
+            m_route = resolve_model_route(requested_model="google-antigravity/claude-sonnet-4-6", tier=1)
+            check("SPC-030 T2: model routing explicitly sets model",
+                  m_route.model == "google-antigravity/claude-sonnet-4-6" and m_route.source == "explicit")
+
+            # Harness command resolution with model & thinking
+            omp_cmd = resolve_agent_command("omp", dproj, dproj / "TICKET_BRIEF.md", model="google-antigravity/gemini-3.8-flash-high", thinking="high")
+            check("SPC-030 T2: omp command contains model and thinking",
+                  omp_cmd.agent == "omp" and "--model" in omp_cmd.cmd and "--thinking" in omp_cmd.cmd)
+
+            prime_cmd = resolve_agent_command("prime-agent", dproj, dproj / "TICKET_BRIEF.md", model="google-antigravity/claude-opus-4-6-thinking")
+            check("SPC-030 T2: prime-agent command contains model",
+                  prime_cmd.agent == "prime-agent" and "--model" in prime_cmd.cmd)
+
+            # Memory distillation & gap ledger verification
+            distiller = MemoryDistiller(dproj)
+            obs1 = DistilledObservation(
+                session_id="sess_1",
+                harness="pi",
+                category="workflow_failure",
+                summary="Missing test assertions before validate",
+                verdict="fail",
+                error_pattern="err_missing_test_assertions",
+            )
+            g1 = distiller.record_observation(obs1)
+            check("SPC-030 T2: memory distiller first observation not yet graduated",
+                  g1 is None)
+
+            obs2 = DistilledObservation(
+                session_id="sess_2",
+                harness="omp",
+                category="workflow_failure",
+                summary="Missing test assertions before validate",
+                verdict="fail",
+                error_pattern="err_missing_test_assertions",
+            )
+            g2 = distiller.record_observation(obs2)
+            check("SPC-030 T2: memory distiller graduates after multi-session corroboration",
+                  g2 is not None and g2.graduated is True and g2.occurrences == 2)
+
         finally:
             shutil.rmtree(dproj, ignore_errors=True)
 
