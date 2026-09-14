@@ -79,6 +79,15 @@ CAPABILITIES: list[dict[str, str]] = [
              "it ticket by ticket.",
      "when": "About to implement a spec autonomously — start here "
              "instead of re-reading the raw spec."},
+    {"name": "ticket-brief", "surface": "both", "group": "plan",
+     "usage": "tenx ticket-brief <SPEC-ID> <TICKET-ID> [--json]",
+     "what": "Scoped context brief for a single ticket, extracting task, "
+             "requirements, conventions, and test instructions.",
+     "when": "Delegating work to a subagent or tackling a ticket in isolation."},
+    {"name": "dispatch", "surface": "both", "group": "track",
+     "usage": "tenx dispatch <SPEC-ID> <TICKET-ID> [--agent A] [--dry-run]",
+     "what": "Dispatch a ticket to an isolated worker running in a git worktree.",
+     "when": "Offloading a ticket to an isolated subagent to preserve main context."},
     # ------------------------------------------------------------- track
     {"name": "next", "surface": "both", "group": "track",
      "usage": "tenx next [--json]",

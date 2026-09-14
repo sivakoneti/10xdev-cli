@@ -56,6 +56,7 @@ from .artifacts import (
 )
 from .context import build_context, render_markdown
 from .execbrief import build_exec_brief
+from .dispatch import build_ticket_brief, dispatch_ticket
 from .discovery import (TENXLINK, code_root, env_project_root,
                         find_project_root, harness_root, is_initialized)
 from .adapters import adapter_ids, detect_adapters
@@ -1034,6 +1035,72 @@ def cmd_exec(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ticket_brief(args: argparse.Namespace) -> int:
+    """Print a scoped ticket brief for a single spec ticket."""
+    root = _root_or_die(args.root)
+    _require_init(root)
+    harness = load_harness(root)
+    spec_id = args.spec.upper()
+    art = harness.get(spec_id)
+    if art is None or art.type != "spec":
+        print(f"tenx: {args.spec} is not a spec", file=sys.stderr)
+        return 1
+    try:
+        brief = build_ticket_brief(harness, art, args.ticket, root)
+    except Exception as exc:
+        print(f"tenx: {exc}", file=sys.stderr)
+        return 1
+    if getattr(args, "json", False):
+        print(json.dumps({
+            "spec": art.id,
+            "ticket": args.ticket,
+            "brief": brief,
+        }, indent=2))
+        return 0
+    sys.stdout.write(brief)
+    return 0
+
+
+def cmd_dispatch(args: argparse.Namespace) -> int:
+    """Dispatch a ticket to an isolated worker in a git worktree."""
+    root = _root_or_die(args.root)
+    _require_init(root)
+    res = dispatch_ticket(
+        project_root=root,
+        spec_id=args.spec.upper(),
+        ticket_id=args.ticket,
+        agent=args.agent,
+        dry_run=args.dry_run,
+        timeout=args.timeout,
+    )
+    if getattr(args, "json", False):
+        print(json.dumps(res, indent=2))
+        return 0 if res.get("status") in ("completed", "dry_run") else 1
+
+    if res.get("status") == "dry_run":
+        print(f"Dispatch plan for {res['spec_id']} / {res['ticket_id']}:")
+        print(f"  worktree: {res['worktree_path']}")
+        print(f"  branch:   {res['branch']}")
+        print(f"  agent:    {res['agent']}")
+        print(f"  command:  {' '.join(res['command'])}")
+        return 0
+
+    if res.get("status") == "completed":
+        print(f"Ticket {res['ticket_id']} completed successfully.")
+        print(f"  branch: {res['branch']}")
+        if res.get("stdout"):
+            print("--- Output ---")
+            print(res["stdout"])
+        return 0
+
+    print(f"Dispatch failed for {res.get('ticket_id', args.ticket)}: "
+          f"{res.get('error', 'non-zero exit code')}", file=sys.stderr)
+    if res.get("stderr"):
+        print(res["stderr"], file=sys.stderr)
+    return 1
+
+
+
 def cmd_hook(args: argparse.Namespace) -> int:
     if args.hook_cmd == "detect":
         from .adapters import ADAPTERS
@@ -1548,6 +1615,27 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("spec", help="spec ID, e.g. SPC-001")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_exec)
+
+    sp = sub.add_parser("ticket-brief",
+                        help="print a scoped context brief for a single spec ticket")
+    sp.add_argument("spec", help="spec ID, e.g. SPC-001")
+    sp.add_argument("ticket", help="ticket ID, e.g. SPC-001-T1")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=cmd_ticket_brief)
+
+    sp = sub.add_parser("dispatch",
+                        help="dispatch a ticket to an isolated worker in a git worktree")
+    sp.add_argument("spec", help="spec ID, e.g. SPC-001")
+    sp.add_argument("ticket", help="ticket ID, e.g. SPC-001-T1")
+    sp.add_argument("--agent", default="pi",
+                    help="agent harness to execute (pi, codex, prime, claude, grok, dsh; default: pi)")
+    sp.add_argument("--dry-run", action="store_true",
+                    help="show worktree path and launch command without executing")
+    sp.add_argument("--timeout", type=int, default=600,
+                    help="timeout in seconds (default: 600)")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=cmd_dispatch)
+
 
     sp = sub.add_parser("skills", help="manage bundled skills")
     sp.add_argument("skills_cmd", choices=["list", "install", "status"])

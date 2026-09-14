@@ -176,3 +176,16 @@
 {"ts": "2026-09-11T12:27:48+00:00", "type": "progress", "actor": "agent", "message": "Completed EPC-017: Epic artifact discipline and template enforcement", "ref": "EPC-017"}
 {"ts": "2026-09-11T12:38:06+00:00", "type": "progress", "actor": "agent", "message": "release v0.21.0: epic artifact discipline — validate epic body substance and block evidence gate on unpopulated boilerplate epics", "ref": "EPC-017"}
 {"ts": "2026-09-11T12:39:54+00:00", "type": "progress", "actor": "agent", "message": "github sync push to sivakoneti/10xdev-cli: 5 created, 0 updated"}
+{"ts": "2026-09-14T18:20:42+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-028-T1: in_progress -> done", "ref": "SPC-028"}
+{"ts": "2026-09-14T18:20:59+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-028-T2: todo -> in_progress", "ref": "SPC-028"}
+{"ts": "2026-09-14T18:21:29+00:00", "type": "progress", "actor": "agent", "message": "Implemented SPC-028-T1: tenx ticket-brief CLI command and tenx_ticket_brief MCP tool", "ref": "SPC-028"}
+{"ts": "2026-09-14T18:22:09+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-028-T2: in_progress -> done", "ref": "SPC-028"}
+{"ts": "2026-09-14T18:22:26+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-028-T3: todo -> in_progress", "ref": "SPC-028"}
+{"ts": "2026-09-14T18:23:01+00:00", "type": "progress", "actor": "agent", "message": "Implemented SPC-028-T2: tenx dispatch runner with git worktree isolation and multi-harness adapter commands", "ref": "SPC-028"}
+{"ts": "2026-09-14T18:23:22+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-028-T3: in_progress -> done", "ref": "SPC-028"}
+{"ts": "2026-09-14T18:23:50+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-028-T4: todo -> in_progress", "ref": "SPC-028"}
+{"ts": "2026-09-14T18:24:07+00:00", "type": "progress", "actor": "agent", "message": "Implemented SPC-028-T3: author universal tenx-dispatch skill and bundle into templates", "ref": "SPC-028"}
+{"ts": "2026-09-14T18:24:25+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-028-T4: in_progress -> done", "ref": "SPC-028"}
+{"ts": "2026-09-14T18:24:52+00:00", "type": "progress", "actor": "agent", "message": "Implemented SPC-028-T4: smoke test coverage for ticket-brief, dispatch dry-run, and tenx-dispatch skill", "ref": "SPC-028"}
+{"ts": "2026-09-14T18:26:48+00:00", "type": "blocker", "actor": "agent", "message": "evidence gate BLOCKED EPC-018 -> complete: no evidence linked - log work with `tenx log ... --ref EPC-018`, or attach it with `tenx set EPC-018 evidence <link/command>`, or re-run with --force (human override)", "ref": "EPC-018"}
+{"ts": "2026-09-14T18:27:29+00:00", "type": "progress", "actor": "agent", "message": "Completed EPC-018: subagent ticket dispatch system with zero-token context briefs, git worktree runner, and universal skill", "ref": "EPC-018"}

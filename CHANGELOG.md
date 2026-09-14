@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Add subagent ticket dispatch system with tenx ticket-brief, tenx dispatch, and tenx-dispatch skill (SPC-028)
+
 ## [v0.21.0] - 2026-09-11
 
 ### Added

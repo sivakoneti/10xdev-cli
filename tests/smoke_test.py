@@ -536,13 +536,17 @@ def main() -> int:
         check("mcp initialize negotiates",
               resp[1]["result"]["serverInfo"]["name"] == "tenx")
         tool_names = {t["name"] for t in resp[2]["result"]["tools"]}
-        check("mcp lists 15 tools", len(tool_names) == 15,
+        check("mcp lists 17 tools", len(tool_names) == 17,
               str(tool_names))
         check("mcp exposes tenx_context", "tenx_context" in tool_names)
         check("mcp exposes tenx_converge", "tenx_converge" in tool_names)
         check("mcp exposes tenx_watchdog", "tenx_watchdog" in tool_names)
         check("mcp exposes tenx_capabilities",
               "tenx_capabilities" in tool_names)
+        check("mcp exposes tenx_ticket_brief",
+              "tenx_ticket_brief" in tool_names)
+        check("mcp exposes tenx_dispatch",
+              "tenx_dispatch" in tool_names)
         check("mcp tools/call works",
               resp[3]["result"]["isError"] is False
               and "tenx validate" in resp[3]["result"]["content"][0]["text"])
@@ -1771,6 +1775,74 @@ def main() -> int:
                   and "epic-template-unfilled" not in {w["rule"] for w in rj.get("warnings", [])})
         finally:
             shutil.rmtree(eproj, ignore_errors=True)
+
+        # =============================================================
+        # SPC-028: Subagent Ticket Dispatch smoke tests
+        # =============================================================
+        dproj = tmp / "dispatch-proj"
+        dproj.mkdir(parents=True, exist_ok=True)
+        try:
+            subprocess.run(["git", "init", "-q", str(dproj)], check=True)
+            subprocess.run(["git", "config", "user.email", "t@t.t"], cwd=dproj, check=True)
+            subprocess.run(["git", "config", "user.name", "t"], cwd=dproj, check=True)
+            tenx("init", "--name", "dispatch-test", "--force", cwd=dproj)
+            tenx("new", "epic", "Dispatch Epic", cwd=dproj)
+            tenx("new", "spec", "Dispatch Spec", "--epic", "EPC-001", cwd=dproj)
+            tenx("new", "convention", "Dispatch Rule", cwd=dproj)
+            strip_discipline(dproj)
+            tenx("validate", "--fix", cwd=dproj)
+
+            # 1. Test ticket-brief on a spec ticket
+            sp_file = next((dproj / ".tenx" / "specs").glob("SPC-001-*.md"))
+            sp_body = (
+                "---\nid: SPC-001\ntype: spec\ntitle: Dispatch Spec\n"
+                "epic: EPC-001\nstatus: in_progress\n"
+                "created: 2026-01-01\nupdated: 2026-01-01\n"
+                "tickets:\n  - id: SPC-001-T1\n    title: First worker ticket\n    status: todo\n---\n\n"
+                "## Summary\n\nSpec summary\n\n"
+                "## Requirements\n\n- FR-001: The worker must run tests.\n\n"
+                "## Tickets\n\n- `SPC-001-T1`: First worker ticket with FR-001 [todo]\n"
+            )
+            sp_file.write_text(sp_body, encoding="utf-8")
+
+            tb_out = tenx("ticket-brief", "SPC-001", "SPC-001-T1", cwd=dproj).stdout
+            check("SPC-028 T1: ticket-brief contains ticket title",
+                  "First worker ticket" in tb_out)
+            check("SPC-028 T1: ticket-brief contains matched requirement",
+                  "FR-001: The worker must run tests." in tb_out)
+            check("SPC-028 T1: ticket-brief contains conventions",
+                  "CON-001" in tb_out)
+
+            # 2. Test ticket-brief --json
+            tb_json = tenx("ticket-brief", "SPC-001", "SPC-001-T1", "--json", cwd=dproj).stdout
+            tbj = json.loads(tb_json)
+            check("SPC-028 T1: ticket-brief json output valid",
+                  tbj.get("ticket") == "SPC-001-T1" and "brief" in tbj)
+
+            # 3. Test dispatch dry-run across harnesses
+            dr_pi = tenx("dispatch", "SPC-001", "SPC-001-T1", "--agent", "pi", "--dry-run", "--json", cwd=dproj).stdout
+            dr_pi_j = json.loads(dr_pi)
+            check("SPC-028 T2: dispatch dry-run for pi",
+                  dr_pi_j.get("agent") == "pi" and dr_pi_j.get("status") == "dry_run" and "pi -p" in " ".join(dr_pi_j.get("command", [])))
+
+            dr_codex = tenx("dispatch", "SPC-001", "SPC-001-T1", "--agent", "codex", "--dry-run", "--json", cwd=dproj).stdout
+            dr_codex_j = json.loads(dr_codex)
+            check("SPC-028 T2: dispatch dry-run for codex",
+                  dr_codex_j.get("agent") == "codex" and "codex exec" in " ".join(dr_codex_j.get("command", [])))
+
+            dr_prime = tenx("dispatch", "SPC-001", "SPC-001-T1", "--agent", "prime", "--dry-run", "--json", cwd=dproj).stdout
+            dr_prime_j = json.loads(dr_prime)
+            check("SPC-028 T2: dispatch dry-run for prime-agent",
+                  dr_prime_j.get("agent") == "prime-agent" and "prime run" in " ".join(dr_prime_j.get("command", [])))
+
+            # 4. Test tenx-dispatch skill installation
+            skills_out = tenx("skills", "list", cwd=dproj).stdout
+            check("SPC-028 T3: tenx-dispatch skill listed",
+                  "tenx-dispatch" in skills_out)
+
+        finally:
+            shutil.rmtree(dproj, ignore_errors=True)
+
 
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

@@ -200,6 +200,29 @@ def _tooldefs() -> list[dict[str, Any]]:
              "spec": {**S, "description": "spec id, e.g. SPC-002"}},
              "required": ["spec"]},
          "handler": mk(C.cmd_exec, {"json": False})},
+        {"name": "tenx_ticket_brief",
+         "description": "Scoped execution brief for a single ticket: "
+                        "extracts only the ticket task, matching spec "
+                        "requirements, conventions, and test commands "
+                        "to preserve supervisor context.",
+         "inputSchema": {"type": "object", "properties": {
+             "spec": {**S, "description": "spec id, e.g. SPC-001"},
+             "ticket": {**S, "description": "ticket id, e.g. SPC-001-T1"}},
+             "required": ["spec", "ticket"]},
+         "handler": mk(C.cmd_ticket_brief, {"json": False})},
+        {"name": "tenx_dispatch",
+         "description": "Dispatch a ticket to an isolated worker in a "
+                        "git worktree: handles worktree creation, runner "
+                        "command execution, and structured outcome receipt.",
+         "inputSchema": {"type": "object", "properties": {
+             "spec": {**S, "description": "spec id, e.g. SPC-001"},
+             "ticket": {**S, "description": "ticket id, e.g. SPC-001-T1"},
+             "agent": {"type": "string",
+                       "description": "agent harness: pi, codex, prime, claude, grok, dsh (default pi)"},
+             "dry_run": {**B, "description": "inspect worktree and command without executing"},
+             "timeout": {"type": "integer", "description": "timeout in seconds"}},
+             "required": ["spec", "ticket"]},
+         "handler": mk(C.cmd_dispatch, {"agent": "pi", "dry_run": False, "timeout": 600, "json": False})},
         {"name": "tenx_changelog",
          "description": "Docs-sync: manage the Keep-a-Changelog "
                         "CHANGELOG.md. action=show prints it; action=add "
