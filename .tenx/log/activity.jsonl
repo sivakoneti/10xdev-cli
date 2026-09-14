@@ -189,3 +189,4 @@
 {"ts": "2026-09-14T18:24:52+00:00", "type": "progress", "actor": "agent", "message": "Implemented SPC-028-T4: smoke test coverage for ticket-brief, dispatch dry-run, and tenx-dispatch skill", "ref": "SPC-028"}
 {"ts": "2026-09-14T18:26:48+00:00", "type": "blocker", "actor": "agent", "message": "evidence gate BLOCKED EPC-018 -> complete: no evidence linked - log work with `tenx log ... --ref EPC-018`, or attach it with `tenx set EPC-018 evidence <link/command>`, or re-run with --force (human override)", "ref": "EPC-018"}
 {"ts": "2026-09-14T18:27:29+00:00", "type": "progress", "actor": "agent", "message": "Completed EPC-018: subagent ticket dispatch system with zero-token context briefs, git worktree runner, and universal skill", "ref": "EPC-018"}
+{"ts": "2026-09-14T18:51:50+00:00", "type": "progress", "actor": "agent", "message": "Release v0.22.0: subagent ticket dispatch system (EPC-018 / SPC-028)"}
