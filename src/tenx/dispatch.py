@@ -348,8 +348,22 @@ def dispatch_ticket(
                     "error": f"Multiplexer creation failed ({projection.multiplexer}): {res_mux.stderr.strip() or res_mux.stdout.strip()}",
                 }
 
-            # If multiplexer requires a secondary run step (e.g. herdr pane run)
-            if projection.run_cmd:
+            # If multiplexer is herdr, extract root_pane pane_id from json response or query it to run agent
+            if projection.multiplexer == "herdr":
+                pane_id = None
+                try:
+                    out_json = json.loads(res_mux.stdout)
+                    pane_id = out_json.get("result", {}).get("root_pane", {}).get("pane_id")
+                except Exception:
+                    pass
+
+                agent_cmd_str = " ".join(f'"{arg}"' if " " in arg else arg for arg in agent_cmd.cmd)
+                if pane_id:
+                    subprocess.run(["herdr", "pane", "run", pane_id, agent_cmd_str], capture_output=True, text=True, timeout=10)
+                else:
+                    # Fallback if parsing failed
+                    subprocess.run(["herdr", "pane", "run", agent_cmd_str], capture_output=True, text=True, timeout=10)
+            elif projection.run_cmd:
                 subprocess.run(projection.run_cmd, capture_output=True, text=True, timeout=10)
 
             return {
@@ -358,15 +372,18 @@ def dispatch_ticket(
                 "ticket_id": ticket_id,
                 "worktree_path": str(wt_dir),
                 "branch": f"tenx/{ticket_id}",
+                "agent": agent_cmd.agent,
+                "visual": True,
                 "multiplexer": projection.multiplexer,
                 "projection_summary": projection.summary,
+                "notes": f"Running visually in {projection.multiplexer} ({projection.summary})",
             }
         except Exception as e:
             return {
                 "status": "error",
                 "spec_id": spec_id,
                 "ticket_id": ticket_id,
-                "error": f"Failed to project into multiplexer: {e}",
+                "error": f"Multiplexer execution failed: {e}",
             }
 
     # Execute headless agent command
