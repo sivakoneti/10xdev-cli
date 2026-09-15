@@ -1,0 +1,625 @@
+# tenx — meta-harness: context-as-code for AI coding agents
+
+[![CI](https://github.com/sivakoneti/10xdev-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/sivakoneti/10xdev-cli/actions/workflows/ci.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![Zero Dependencies](https://img.shields.io/badge/dependencies-0%20runtime-brightgreen.svg)](pyproject.toml)
+
+> "The percentage of time you spend engineering the markdown should be higher
+> than the time you spend executing the code."
+
+`tenx` turns any project into a **context base**: a structured packet of
+markdown artifacts that keeps AI coding agents briefed, on-rails, and
+accountable across sessions. It implements the "meta-harness" pattern
+inspired by autonomous agent development workflows:
+
+- **Context as code.** Epics, specs, conventions, and docs live as
+  structured markdown with parseable frontmatter — in git, reviewed like
+  code, more valuable than the code itself.
+- **Benevolent prompt injection.** Every agent session boots with the exact
+  right context packet via a session-start hook, so each session starts like
+  a senior engineer on the project.
+- **Linting for the SDLC.** `tenx validate` compares authored state against
+  derived state (ticket progress vs claimed status, broken refs, stale
+  artifacts) and reports drift — hundreds-of-rules style, self-correctable
+  by the agent.
+- **Write-back loop.** Agents log activity, move tickets, and re-validate,
+  leaving a full trail of what happened and why.
+
+Works on any project. Zero runtime dependencies (Python 3.10+ stdlib;
+uses PyYAML if present).
+
+## Install
+
+```bash
+# Install directly via uv (recommended)
+uv tool install git+https://github.com/sivakoneti/10xdev-cli.git
+
+# Or via pipx
+pipx install git+https://github.com/sivakoneti/10xdev-cli.git
+
+# Verify install
+tenx --version
+```
+
+## Updating
+
+tenx is installed per machine as a standalone CLI, so existing installs do
+not pick up new features on their own. It ships with a self-update command:
+
+```bash
+tenx update --check        # report whether a newer version exists (no change)
+tenx update                # check, then upgrade in place via uv/pipx
+tenx update --check --json # machine-readable
+```
+
+The check reads the upstream repo (GitHub Releases, falling back to
+`pyproject.toml` on the default branch) and is offline-tolerant: a failed
+check prints a note and exits 0, it never crashes. The upgrade detects the
+installer (`uv tool` vs `pipx`) and runs the matching upgrade command; if it
+cannot detect one it prints manual instructions.
+
+Because tenx is agent-facing, the session-start surfaces already tell agents
+to check: the operating protocol in `tenx context --mode agent`, the
+`AGENTS.md` managed block, the bootstrap snippet, and the `tenx-process`
+skill all instruct agents to run `tenx update --check` at session start and
+to tell a human before installing a newer version.
+
+## Concurrency-safe state (v0.15+)
+
+A fleet of agents can run `tenx` against the same project at the same time.
+Mutating commands (`init`, `new`, `set`, `ticket`, `log`, `archive`,
+`hook`, `skills`, `sync`, `validate`, `changelog`) are serialized behind a per-project
+advisory lock at `.tenx/.lock` (via `fcntl.flock`; the OS releases it on
+crash or exit). State-file writes use atomic replacement (`temp +
+os.replace`), so readers never see partial files.
+
+If another process holds the lock, a mutating command waits up to 60 s
+(override with `TENX_LOCK_TIMEOUT=seconds`), then exits `2` with a clean
+message — no traceback. Read-only commands (`context`, `show`, `list`,
+`next`, `watchdog`, `triage`, `review`, `history`, `doctor`,
+`update --check`) do not take the lock.
+
+`.tenx/.lock` is gitignored; never commit it.
+
+## Quick start (any project)
+
+```bash
+cd your-project
+tenx init --bootstrap                  # scaffold .tenx/ + seed starter docs
+tenx new epic "Ship the billing system"
+tenx new spec "Billing API" --epic EPC-001
+tenx hook install --agent claude       # or codex / opencode / gemini / all
+tenx skills install                    # one skill per artifact type + process
+```
+
+From then on, every Claude Code session in the project starts with the full
+context packet injected, and Codex/OpenCode/Gemini agents are instructed via
+a managed `AGENTS.md` block to run it.
+
+### Works with any agent harness
+
+tenx is harness-agnostic by contract: the context base is plain markdown
+files and the tooling is one shell command that prints text. Any harness
+with a terminal tool can use 100% of it.
+
+The harness layer follows OpenDesign's agent-adapter architecture
+(documented in the `src/tenx/adapters.py` module docstring): **adapters
+are data, not code**. Each harness
+is one declarative record in `src/tenx/adapters.py` (bins to probe,
+auto-loaded instruction files, hook mechanism, skills dir); a generic
+engine installs and detects from those fields. Adding a harness is a
+one-entry change — no engine edits.
+
+```bash
+tenx hook detect              # probe PATH for ~29 known harnesses
+tenx hook detect --json
+tenx hook install --agent detected   # wire only what's installed
+tenx hook install --agent hermes     # or any single adapter id
+tenx hook install --agent all        # every file-based target
+```
+
+Injection tiers (defense in depth):
+
+1. **Persona / runtime injection** — the strongest tier: the mandate is
+   loaded by the harness into the agent's identity, not read from a file.
+   - DeepSeek Harness (dsh): `tenx hook install --agent dsh` emits a
+     mountable `tenx` agent preset whose persona hard-mandates the loop
+     (`tenx validate` MUST pass before work is done; no archive/merge
+     without operator sign-off). Mount it from `~/.dsh/.agent-presets/tenx`.
+   - Prime Agent injects `AGENTS.md` into its system prompt; omp has a
+     forced `--append-system-prompt "$(tenx hook bootstrap)"` tier.
+2. **Forced session-start hook** — the harness runs a command at session
+   start and injects stdout: Claude Code (`.claude/settings.json`
+   SessionStart). Any harness with an equivalent hook just needs to run
+   `tenx context --mode agent`.
+3. **Auto-loaded instruction files** — the adapter catalog covers:
+   claude, codex, opencode, cursor, gemini, cline, windsurf, copilot,
+   continue, aider, amp, qoder, qwen, grok, deepseek, deepseek-harness
+   (dsh), prime-agent, omp (Oh My Pie), antigravity (agy), devin,
+   hermes, kimi, kiro, kilo, vibe, vela, trae, pi, generic. The managed
+   block states the loop as **Hard rules**, not just context.
+4. **Universal bootstrap** — for anything else: paste the output of
+   `tenx hook bootstrap` into the harness's system prompt / custom
+   instructions. That block is the entire integration; it only assumes
+   the agent can run shell commands. Even with nothing installed, an
+   agent can always run `tenx context --mode agent` on demand.
+5. **Native MCP tools** — harnesses with Model Context Protocol support
+   (Claude Code, Cursor, Cline, Windsurf, Copilot, ...) can call tenx
+   as structured tools instead of shell commands. See
+   [MCP server](#native-tools-via-mcp) below.
+
+**The universal backstop — git pre-commit gate.** Instruction files and
+personas raise *voluntary* compliance, but a confused or pressured model can
+still skip tenx. The one layer no harness can bypass is git: every agent must
+commit through it. `tenx hook install --git` (and `tenx init` in a git repo)
+installs a pre-commit hook that runs `tenx validate` and **rejects the commit
+while it reports errors**. That turns "the agent silently skipped tenx" into
+"the commit is blocked," on every harness identically. Bypass only with
+`git commit --no-verify` and explicit operator approval.
+
+### Alternative: standalone PM repo (the 10X layout)
+
+10X keeps their artifacts in a dedicated *project management repo*, separate
+from the code repos. tenx supports that layout first-class:
+
+```bash
+mkdir my-project-pm && cd my-project-pm && git init
+tenx init --standalone --code-root /path/to/code-repo --bootstrap
+tenx hook install --agent all      # hooks + AGENTS.md land in the CODE repo
+```
+
+Wiring: the harness config records `code_root:`; the code repo gets a
+`.tenxlink` pointer file back to the PM repo. From inside the code repo,
+every `tenx` command resolves the harness through the link automatically.
+Co-located (`.tenx/` inside the code repo) remains the default.
+
+### Multiplayer: share the harness
+
+The context base and the skills are plain git-trackable markdown:
+
+- Commit `.tenx/` (or the standalone PM repo) and review it in PRs — the
+  team's context compounds instead of living in individual chat histories.
+- Team skill channels: clone a shared skills repo and run
+  `tenx skills install --target <shared-repo>/skills`; good skills get
+  merged into main, mirroring 10X's "channels merged into main" workflow.
+- The activity log (`tenx history`) records who/what did what, human or
+  agent, so overnight runs leave an audit trail.
+
+## The artifact types
+
+| Type | ID | Purpose |
+|------|----|---------|
+| epic | `EPC-001` | What we are building + milestones to get there |
+| spec | `SPC-001` | Detailed technical plan, ticket by ticket |
+| convention | `CON-001` | Rules that keep agents on rails (indexed in `conventions/INDEX.md`) |
+| doc | `DOC-001` | Architecture, decisions, external systems, anything an agent might need |
+
+Every artifact is markdown with YAML frontmatter:
+
+```yaml
+---
+id: SPC-001
+type: spec
+title: Billing API
+status: in_progress
+epic: EPC-001
+created: 2026-08-24
+updated: 2026-08-24
+tickets:
+  - id: SPC-001-T1
+    title: Add /api/invoices endpoint
+    status: done
+  - id: SPC-001-T2
+    title: Stripe webhook handler
+    status: in_progress
+---
+```
+
+### Artifact shapes (best-practice defaults)
+
+`tenx new` seeds each artifact with a structure modeled on how top
+engineering orgs plan work, so a fresh project starts world-class:
+
+- **epic** — OKR-style: Objective (who benefits, working backwards from the
+  user), measurable **Key results**, Scope, **Non-goals**, Milestones.
+- **spec** — design-doc style: Summary, Context and scope, Goals/non-goals,
+  **Requirements** (numbered `FR-###`, one testable MUST each, unknowns
+  marked `[NEEDS CLARIFICATION: ...]`), **Success criteria** (measurable
+  `SC-###`), Design (with trade-offs), **Alternatives considered**,
+  Cross-cutting concerns (security/privacy/observability/testing), Tickets,
+  Validation (definition of done, Given/When/Then tied to FR ids).
+  `tenx validate` blocks non-draft specs with open clarify markers and
+  warns when an `FR-###` has no ticket; `tenx converge` reports coverage.
+- **convention** — one imperative Rule, the Why (failure it prevents),
+  Applies-to, and a good/bad example.
+- **doc** — Purpose plus a shape that fits: architecture/system, a decision
+  record (Context → Decision → Alternatives → Consequences), or a blameless
+  postmortem (Summary → Impact → Root cause → Learnings → Follow-ups).
+
+The matching `tenx-write-*` skills teach the same structures. Only `## Summary`
+and `## Validation` are enforced on specs (`tenx validate`); the rest are
+guidance, so existing artifacts are never flagged.
+
+## Command reference
+
+```bash
+tenx init [--bootstrap] [--name N] [--description D] [--agent id|all|detected] [--no-hooks] [--force]  # scaffold .tenx/
+tenx init --standalone --code-root /path/to/code-repo  # dedicated PM repo governing a separate code repo
+tenx capabilities [--json]       # capability catalog: every command/tool + when-to-use guidance
+tenx context --mode operator     # human dashboard
+tenx context --mode agent [--budget N]  # full packet; --budget truncates low-priority sections
+tenx status                      # alias for the operator dashboard
+tenx new <epic|spec|convention|doc> "Title" [--epic EPC-001] [--priority P0]
+tenx show <ID> [--json]          # full artifact, metadata + body
+tenx list [type] [--json]
+tenx set <ID> status in_review   # update metadata (status/owner/epic/title/tags/priority/evidence)
+tenx set <ID> priority P0        # business priority tier: P0/P1/P2
+tenx set <ID> status complete [--force]  # gated: needs clean validate + done tickets + linked evidence
+tenx ticket SPC-001 SPC-001-T2 done
+tenx ticket-brief SPC-001 SPC-001-T1 [--json]  # scoped execution brief for an isolated ticket
+tenx dispatch SPC-001 SPC-001-T1 [--agent pi|omp|prime|codex] [--model M] [--thinking T] [--visual] [--multiplexer auto|herdr|tmux|none] [--focus] [--dry-run] [--timeout SECS]  # dispatch subagent in git worktree
+tenx validate [--fix] [--json]   # lint the SDLC; --fix rebuilds the convention index
+tenx validate --list-rules [--json]  # print the rule catalog (no linting)
+tenx converge SPC-001 [--json] [--append]  # requirement coverage (FR-### vs tickets) before completion
+tenx log "implemented webhook handler" --ref SPC-001 --type progress
+tenx history [--limit 20] [--json]
+tenx next [--json]               # prioritized work queue (the self-improving loop)
+tenx watchdog [--json] [--window 7] [--top 5]  # top things needing attention + are they handled
+tenx triage [--json] [--window 7] [--top 5]    # what needs a human now: act/watch/escalation
+tenx review [--json]             # what awaits review (in_review specs/tickets)
+tenx archive EPC-xxx --approved-by "Operator Name"  # retire a finished epic (explicit approval required)
+tenx scan [--json] [--write]     # map the codebase; --write stores it as a DOC
+tenx sync push|pull [--spec SPC-xxx] [--dry-run] [--json]
+tenx mcp [serve|install]         # MCP server; install writes .mcp.json
+tenx skills list|install|status [--target DIR]
+tenx hook [--mode agent] [--budget N] [--no-log]  # emit the packet; logs a throttled session entry
+tenx hook install --agent <id|all|detected> [--git]  # see `tenx hook detect`
+tenx hook install --git        # install the pre-commit gate (tenx validate)
+tenx hook install --agent dsh  # emit the mountable DSH agent preset
+tenx doctor                      # health check
+tenx update [--check] [--json]   # self-update; --check reports only
+tenx changelog [show]            # print the Keep-a-Changelog CHANGELOG.md
+tenx changelog add "msg" [--type added|changed|deprecated|removed|fixed|security] [--ref SPC-001]
+tenx changelog release v0.16.0   # stamp [Unreleased] into a dated version
+```
+
+### Discovering what tenx can do
+
+Agents (and humans) don't have to memorize this page. `tenx capabilities`
+prints the full command/tool catalog grouped by session-loop stage, each
+with a one-line "what" and a "when" that says in which situation to reach
+for it (`--json` for machine-readable output). The same catalog is
+exposed as the `tenx_capabilities` MCP tool, and the context packet
+points at both — so any harness discovers the surface on its own.
+
+### Onboard an existing codebase in one command
+
+`tenx scan` walks the governed code repo and reports stacks, entry-point
+hints, test setup, CI, existing agent instruction files, and a top-level
+directory census. `tenx scan --write` upserts that map as a DOC artifact
+tagged `codebase-map`, so a fresh project goes from zero to briefed in
+one command and every later session starts with the map in the packet.
+
+```bash
+tenx init --bootstrap
+tenx scan            # read the map
+tenx scan --write    # store it as .tenx/docs/DOC-xxx-codebase-map.md
+```
+
+### Keep packets cheap and auditable
+
+Large projects bloat the session-start packet. `--budget N` keeps
+sections whole while they fit, in priority order (workspace →
+validation → conventions → epics → specs → docs → activity), cuts the
+first section that overflows with a pointer to `tenx show <ID>`, and
+lists omitted sections at the end. The operating protocol is always
+kept. Header + protocol are protected from the budget.
+
+Every `tenx hook emit` also writes a throttled `session` entry to the
+activity log (at most one per hour), so `tenx history` shows when
+agents actually booted with context. Use `--no-log` to opt out.
+
+```bash
+tenx context --mode agent --budget 1500
+tenx hook emit --budget 1500
+```
+
+### Native tools via MCP
+
+`tenx mcp` runs a Model Context Protocol server on stdio (newline-
+delimited JSON-RPC 2.0, zero dependencies). MCP-capable harnesses get
+the whole tenx surface as native tools — no prompt parsing, structured
+arguments, typed errors.
+
+```bash
+tenx mcp install               # writes managed .mcp.json (Claude Code)
+# or register manually in any MCP-capable harness:
+#   command: tenx   args: ["mcp"]
+```
+
+Exposed tools (17): `tenx_context`, `tenx_next`, `tenx_watchdog`,
+`tenx_triage`, `tenx_status`, `tenx_show`, `tenx_list`, `tenx_ticket`,
+`tenx_log`, `tenx_validate`, `tenx_scan`, `tenx_exec`, `tenx_changelog`,
+`tenx_capabilities`, `tenx_converge`, `tenx_ticket_brief`, `tenx_dispatch`. Each maps onto the same code path
+as the CLI command, so output and exit semantics match exactly;
+mutating tools also take the same per-project advisory lock as the CLI
+(`tenx_converge` locks only when `append` is set). The server is
+fault-isolated: a bad tool call or malformed line returns an error
+result and keeps serving.
+
+### Multiplayer: sync tickets to GitHub Issues
+
+Spec tickets are the source of truth in `.tenx/`; `tenx sync` mirrors
+them to GitHub Issues so the team sees work where it already looks.
+
+```bash
+tenx sync push --dry-run   # preview the plan
+tenx sync push             # create/update one issue per ticket
+tenx sync pull             # map issue state back into ticket status
+```
+
+- Binding: issue titles carry a `[SPC-002-T1]` marker; push is
+  idempotent and reconciles state, labels (`tenx:todo` … `tenx:done`),
+  and the status line in the issue body.
+- Pull maps closed → `done` (and honors the body status line for open
+  issues), writing back through the same path as `tenx ticket`.
+- Repo resolution: `github_repo: owner/name` in `.tenx/config.yaml`,
+  else the `origin` remote. Token resolution: `TENX_GITHUB_TOKEN` >
+  `GITHUB_TOKEN` > `~/.git-credentials`. The token is never written
+  into `.tenx/` or the activity log.
+- Zero new dependencies (stdlib `urllib`). Network errors fail clean
+  with a `tenx sync: …` message and a non-traceback exit; re-run to
+  resume (push is idempotent). `TENX_GITHUB_API` overrides the endpoint
+  (GitHub Enterprise / tests).
+
+### Spec-first autonomous execution
+
+Write the spec (3–4 hours of markdown, per the video), then hand the agent
+an execution brief:
+
+```bash
+tenx exec SPC-001 | claude -p     # headless overnight run
+tenx exec SPC-001                 # or paste into an interactive session
+```
+
+The brief tells the agent to work ticket by ticket, write back every state
+change (`tenx ticket`, `tenx log`), validate before finishing, and commit
+both repos. `tenx ticket` creates tickets on first touch, so agents can grow
+a spec's ticket list as they discover work.
+
+All read commands support `--json` for machine consumption. Discovery
+order: `TENX_ROOT` env > `.tenx/` walking up > `.tenxlink` walking up >
+`.git` > cwd.
+
+### Subagent ticket dispatch and worktree isolation (v0.24+)
+
+Large-scale execution across multi-ticket epics causes conversation transcripts to balloon, leading to token exhaustion, reasoning degradation, and convention drift when a supervisor agent attempts to implement every ticket in a single monolithic session. tenx solves this by enabling supervisor agents to delegate individual tickets to isolated child workers:
+
+```bash
+# Generate a scoped ticket execution brief (zero prompt bloat)
+tenx ticket-brief SPC-001 SPC-001-T1
+tenx ticket-brief SPC-001 SPC-001-T1 --json
+
+# Dispatch subagent worker into an isolated git worktree
+tenx dispatch SPC-001 SPC-001-T1 --agent pi
+tenx dispatch SPC-001 SPC-001-T1 --agent omp --model google-antigravity/claude-sonnet-4-6
+tenx dispatch SPC-001 SPC-001-T1 --dry-run
+```
+
+- **Zero-token context slicing (`tenx ticket-brief`):** Instead of injecting entire epics, specs, and historical transcripts, `tenx ticket-brief` extracts only what the child agent strictly needs: the ticket task, description, matching functional requirements (`FR-###`) parsed from the parent spec, conventions indexed in `.tenx/conventions/INDEX.md`, and the landing/test discipline.
+- **Parent-commit git worktree isolation:** `tenx dispatch` creates an isolated git worktree at `.tenx/worktrees/<TICKET-ID>` branched strictly from the parent checkout's current `HEAD` commit (`git rev-parse HEAD`), on a dedicated branch named `tenx/<TICKET-ID>`. Workers run in complete filesystem isolation without polluting or conflicting with the parent working tree.
+- **Multi-harness runner support:** Out of the box, `tenx dispatch` constructs optimized execution commands for approved coding harnesses:
+  - **Oh My Pi (omp):** `omp -p --cwd <worktree> [--model <model>] [--thinking <level>]`
+  - **Pi (pi):** `pi -p [--model <model>] [--thinking <level>]`
+  - **Prime Agent:** `prime-agent -p --cwd <worktree> [--model <model>] [--thinking <level>]`
+  - **Codex CLI:** `codex exec --dangerously-bypass-approvals-and-sandbox -C <worktree>`
+  - **Generic CLI fallback:** Any executable CLI agent available on `PATH`.
+- **Enforced landing loop:** Dispatched workers implement changes within their worktree, execute tests, update ticket status (`tenx ticket <SPEC> <TICKET> done`), log progress with artifact references (`tenx log ... --ref <SPEC>`), and ensure `tenx validate` reports 0 errors before finishing.
+- **Supervisor delegation protocol:** Dispatched subagent workflows are exposed natively to agents via the `tenx_dispatch` and `tenx_ticket_brief` MCP tools, as well as the bundled `tenx-dispatch` skill (`tenx skills install`).
+
+### Visual terminal multiplexer projection (Herdr and tmux)
+
+Headless background subagents are powerful for unattended pipelines, but human operators and supervisors working in interactive terminals need real-time visual observability. Passing `--visual` to `tenx dispatch` projects the subagent directly into an active terminal multiplexer:
+
+```bash
+# Auto-detect active multiplexer and project subagent visually
+tenx dispatch SPC-001 SPC-001-T1 --visual
+
+# Explicitly target Herdr or tmux
+tenx dispatch SPC-001 SPC-001-T1 --visual --multiplexer herdr
+tenx dispatch SPC-001 SPC-001-T1 --visual --multiplexer tmux
+
+# Focus the newly projected subagent container immediately
+tenx dispatch SPC-001 SPC-001-T1 --visual --focus
+```
+
+- **Automatic multiplexer detection:** Automatically probes the active environment for Herdr (`HERDR_ENV=1` or `HERDR_SESSION`) and tmux (`TMUX`). Explicitly override with `--multiplexer <auto|herdr|tmux|none>`.
+- **Herdr workspace projection & hierarchical sidebar ordering:** Creates a dedicated Herdr workspace labeled with the ticket ID (`herdr workspace create --label <TICKET-ID> --cwd <worktree>`). Using raw Unix domain socket JSON-RPC (`$HERDR_SOCKET_PATH` or `~/.config/herdr/herdr.sock`) and protocol 16 `workspace.move`, tenx automatically repositions the child workspace immediately below the parent workspace in Herdr's left navigation sidebar. Subagents remain visually grouped under the parent project rather than lost at the bottom of the workspace list.
+- **tmux window projection:** Spawns a dedicated tmux window in the active session (`tmux new-window -c <worktree> -n <TICKET-ID> <cmd>`).
+- **Focus control:** Defaults to non-focused spawning (`--focus=False` / `--no-focus`) so dispatched subagents boot in the background without stealing keyboard focus from the operator. Pass `--focus` to switch focus directly to the subagent's pane for interactive pairing.
+- **Dry-run inspection:** `--dry-run` previews the planned worktree path, branch, agent command, model route, and multiplexer projection commands (create and run commands) as structured text or JSON (`--json`).
+
+### Dynamic Bifrost model routing
+
+Subagent dispatch routes tasks intelligently to frontier reasoning and implementation models via local Bifrost AI Gateway (`http://localhost:8080`) and Agent Anti-Gravity (`google-antigravity`), with graceful fallback:
+
+```bash
+# Route to an explicit model
+tenx dispatch SPC-001 SPC-001-T1 --model google-antigravity/claude-sonnet-4-6
+
+# Global model override for dispatch via environment variable
+export TENX_DISPATCH_MODEL="google-antigravity/gemini-3.8-flash-high"
+tenx dispatch SPC-001 SPC-001-T1
+```
+
+- **Ranked model capability tiers:**
+  - **Tier 1 (Reasoning & Architecture):** Frontier models benchmarked for complex architectural planning and heavy code reasoning, including `google-antigravity/claude-opus-4-6-thinking`, `google-antigravity/claude-sonnet-4-6`, `google-antigravity/gemini-3.1-pro-high`, `google-antigravity/gemini-2.5-pro`, and `Cline/google/gemini-2.5-pro`.
+  - **Tier 2 (High-Throughput Implementation):** Fast, high-efficiency models optimized for ticket implementation, including `google-antigravity/gemini-3.8-flash-high`, `google-antigravity/gemini-3.7-flash`, `google-antigravity/gemini-3.6-flash-medium`, `google-antigravity/gemini-2.5-flash`, `Cline/google/gemini-2.5-flash`, and free-tier failover `Cline/cohere/north-mini-code:free`.
+- **Dynamic resolution precedence:**
+  1. Explicit `--model <model>` argument.
+  2. `TENX_DISPATCH_MODEL` environment variable override.
+  3. Live gateway discovery: queries Bifrost `/v1/models` in real time to select the highest-ranked available live model matching the target tier.
+  4. Resilient failover: falls back to Bifrost free-tier models or native harness defaults if the gateway is offline or unreachable.
+- **Zero dependencies:** Standard library implementation (`urllib.request` + `json`) with low socket timeouts to ensure offline tolerance.
+
+### Closed-loop memory distillation and the Gap Ledger
+
+Long-running agentic development generates valuable lessons, but dumping uncurated agent thoughts into context packets bloats token usage and causes model confusion. tenx implements closed-loop memory distillation inspired by the verified backpass pattern:
+
+```
+Harness Transcript (pi, omp, prime, codex)
+                   │
+                   ▼
+  Distilled Observations (.tenx/memory/distillations.jsonl)
+                   │
+                   ▼
+  Cross-Session Gap Ledger (.tenx/memory/gap_ledger.json)
+                   │  (Requires >= 2 distinct sessions)
+                   ▼
+   Graduation into Project Conventions (.tenx/conventions/)
+```
+
+- **Verification-coupled takeaways:** Long conversation transcripts across harnesses (`omp`, `pi`, `prime-agent`, `codex`) are compressed into structured observations (`category`, `summary`, `error_pattern`, `verdict`).
+- **Grounded loss function:** Memory updates are coupled directly to `tenx validate` rule checks and automated test results. Observations are tied to verifiable pass/fail outcomes, preventing hallucinated or speculative rules from entering the project memory.
+- **Multi-session graduation gate:** To prevent single-session quirks from corrupting project rules, the **Gap Ledger** requires multi-session corroboration (>= 2 independent sessions) before any observed pattern can graduate into a project convention (`.tenx/conventions/`) or bundled skill.
+- **Token budget preservation:** Keeps root instruction files (`AGENTS.md`) lean by refactoring graduated learnings into indexed, modular convention files loaded on demand.
+
+## The agent loop
+
+`tenx next` derives the highest-value action, in this order:
+
+1. fix validation errors
+2. reconcile drift (authored vs derived status)
+3. review specs sitting in `in_review`
+4. implement the next open ticket in active specs
+5. write specs for draft epics
+6. (nothing queued → create an epic)
+
+Within the "do the work" buckets (3–5), a **business priority tier**
+(`P0`/`P1`/`P2`, set with `tenx set <ID> priority P0`) floats urgent work
+above normal work. Harness health (1–2) always comes first regardless of
+priority — fix the machine, then build. A spec inherits its epic's priority
+when it has none of its own.
+
+`tenx watchdog` is the pulse check: it scans the whole harness and surfaces
+the top few problems — broken validation, drift, blocked or stalled specs,
+open blockers, work waiting in review — and cross-references recent activity
+to say whether each is **being handled** or **unattended**. Run it after
+`tenx context` to spot work that has gone quiet.
+
+`tenx triage` is the escalation layer on top of watchdog: it classifies the
+current attention items into **act now** (critical, or high and unattended),
+**watch** (being handled or awaiting review), and **healthy**, then picks the
+single most important thing needing a human decision. The bundled
+`tenx-triage` skill wraps this as a read-only **Triage Officer** agent role you
+can schedule to report what needs you right now.
+
+Install the bundled `tenx-process` skill (`tenx skills install`) and agents
+run this loop autonomously: brief → pick → load context → work → write back →
+validate. The bundled `tenx-review` skill adds the **landing discipline**:
+evidence before done, a bounded 2-cycle fix loop, and a human gate on the
+final merge.
+
+The **evidence gate is enforced by the CLI**: `tenx set <ID> status complete`
+for a spec/epic is blocked unless `tenx validate` is clean for that artifact,
+its tickets are done, evidence is linked (a `--ref` log entry or an
+`evidence:` field), and the shipped work is noted in `CHANGELOG.md`
+(docs-sync). `--force` is the explicit human override, and
+`evidence_gate: off` in `.tenx/config.yaml` disables it per project.
+
+## Docs-sync (keep documentation in sync with code)
+
+Documentation drifts because code changes have an enforced merge path while
+doc updates are a separate manual step. tenx folds the doc update into the
+path, following [Keep a Changelog](https://keepachangelog.com/) and
+docs-as-code practice:
+
+- `tenx init` seeds a `CHANGELOG.md` (an `[Unreleased]` section at the top).
+- When you ship something, note it in the same step you mark the work done:
+  `tenx changelog add "what changed" --type fixed --ref SPC-001`.
+- When you cut a release, `tenx changelog release v0.16.0` stamps
+  `[Unreleased]` into a dated version and reopens a fresh `[Unreleased]`.
+- `tenx validate` flags docs drift (`changelog-missing`, `changelog-format`,
+  `changelog-unreleased-empty`).
+- The **evidence gate** requires a changelog entry referencing a spec/epic
+  before it can be marked `complete` — docs are part of done. Override with
+  `--force` (human) only.
+
+The `tenx-docs-sync` skill and the `tenx_changelog` MCP tool expose the same
+discipline to agents.
+
+## Validation rules
+
+`tenx validate` lints the SDLC with 40 rules. The catalog
+below is generated from `RULE_CATALOG` in `src/tenx/rules.py`; run
+`tenx validate --list-rules` (or `--list-rules --json`) to print it from
+the CLI at any time — no project needed.
+
+| Rule | Default | What it catches |
+|------|---------|-----------------|
+| `agent-surface-stale` | warning | a managed agent instruction file (AGENTS.md, CLAUDE.md, etc.) predates the shipped template (fix: `tenx hook install --agent all`) |
+| `archived-epic-active-specs` | warning | epic is archived but one or more of its specs are not |
+| `blocker-unresolved` | info | recent blocker log entry has no follow-up progress/decision entry (param: blocker_days) |
+| `changelog-format` | warning | CHANGELOG.md has no [Unreleased] section (Keep a Changelog keeps one at the top) |
+| `changelog-missing` | warning | no CHANGELOG.md; docs-sync is off. Run `tenx changelog add ...` to start one |
+| `changelog-unreleased-empty` | info | completed work has no [Unreleased] changelog entry; run `tenx changelog add ...` |
+| `clarify-markers-open` | error | spec still contains [NEEDS CLARIFICATION] markers past draft; resolve them before work continues |
+| `commit-without-writeback` | warning | recent git commit touched code files but has no activity-log entry within commit window (param: commit_window_hours) |
+| `config-code-root` | error | config declares a code_root that does not exist |
+| `convention-empty-body` | warning | convention body has too little content to be followed (param: min_convention_chars) |
+| `convention-index` | warning | conventions/INDEX.md drifts from the convention files (run `tenx validate --fix`) |
+| `dates-monotonic` | warning | artifact `updated` date is before its `created` date |
+| `derived-status-drift` | warning | authored spec status disagrees with the status derived from its tickets (the 10X checkpoint rule; also surfaces as info when all tickets are done but the spec is not promoted) |
+| `epic-missing-sections` | warning | epic body lacks required objective/overview section (param: epic_sections) |
+| `epic-no-specs` | info | active epic has no specs yet |
+| `epic-progress-drift` | warning | epic status disagrees with its specs' statuses (also surfaces as info when all specs are done but the epic is not promoted) |
+| `epic-ref` | error | spec has no epic reference or references an unknown epic |
+| `epic-template-unfilled` | warning | epic body is empty or contains unfilled scaffold template boilerplate |
+| `frontmatter-parse` | error | artifact frontmatter is not parseable YAML |
+| `frontmatter-required` | error | artifact is missing a required frontmatter field (id/type/title/status per type) |
+| `harness-missing` | error | no .tenx/ harness found; run `tenx init` first |
+| `id-filename-mismatch` | warning | artifact filename does not start with its id (manual rename broke navigation) |
+| `id-format` | error | artifact id must look like EPC-001 / SPC-001 / CON-001 / DOC-001 |
+| `id-type-mismatch` | error | artifact id prefix does not match its type |
+| `id-unique` | error | two artifacts share the same id |
+| `log-progress-no-ref` | info | progress log entry has no artifact ref — write-back should reference an artifact |
+| `log-quiet` | info | no activity logged for quiet_days (param: quiet_days) |
+| `orphan-spec` | warning | spec is in_progress/in_review/complete but defines no tickets |
+| `priority-format` | warning | priority is set but not one of P0/P1/P2 (unset is fine; it means normal queue order) |
+| `requirement-orphan` | info | a ticket references an FR-### id that does not appear in the spec body |
+| `requirement-uncovered` | warning | a requirement (FR-###) has no ticket referencing it; add a ticket like "[FR-001] ..." so coverage is traceable |
+| `spec-missing-sections` | warning | spec body lacks required sections (param: spec_sections, default Summary,Validation) |
+| `stale-artifact` | info | artifact sat in_review longer than stale_days (param: stale_days) |
+| `status-valid` | error | artifact status missing or not in the allowed vocabulary |
+| `ticket-id` | error | spec ticket without an id |
+| `ticket-id-prefix` | warning | ticket id should be '<SPEC-ID>-T<n>' — GitHub sync markers depend on it |
+| `ticket-id-unique` | error | duplicate ticket id within one spec |
+| `ticket-status-valid` | error | ticket status not in todo/in_progress/in_review/done/blocked |
+| `ticket-title-missing` | info | ticket has no title |
+| `type-unknown` | error | artifact type is not one of epic/spec/convention/doc |
+
+## Layout created by `tenx init`
+
+```
+.tenx/
+  config.yaml        # project identity + rule params
+  README.md          # harness guide
+  epics/             # EPC artifacts
+  specs/             # SPC artifacts
+  conventions/       # CON artifacts + INDEX.md
+  docs/              # DOC artifacts
+  log/activity.jsonl # append-only agent activity log
+  memory/            # gap ledger + transcript distillations
+  worktrees/         # isolated git worktrees for dispatched subagents
+```
+
+## Philosophy
+
+- The codebase says *what exists*; the harness says *why it exists, what we
+  build next, and how work must be done*. You should be able to rebuild the
+  product from the context repo alone.
+- Agents are great at consistency and structure; humans at the first and
+  final mile. Give the agents the things they're great at — including
+  holding the process accountable via `tenx validate`.
+- Minimize entropy and diversion from plan while keeping agent speed.

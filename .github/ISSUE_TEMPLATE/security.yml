@@ -1,0 +1,22 @@
+name: Security Vulnerability Report
+description: Privately report a security vulnerability in tenx
+labels: ["security"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please report security issues responsibly.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description of the vulnerability
+      description: Provide a clear description of the security issue.
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: Who or what is affected by this vulnerability?
+    validations:
+      required: true

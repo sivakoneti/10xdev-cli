@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+dist/
+build/
+*.egg-info/
+.venv/
+
+# tenx runtime lockfile (advisory, never commit)
+.tenx/.lock
+.tenx/worktrees/
+.tenx/memory/
+
+# Private launch kit / drafts
+LAUNCH_KIT.md
