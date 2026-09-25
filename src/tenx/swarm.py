@@ -110,84 +110,120 @@ def execute_spec_swarm(
     spec_id: str,
     agent: Optional[str] = None,
     model: Optional[str] = None,
+    thinking: Optional[str] = None,
     visual: bool = False,
     multiplexer: Optional[str] = None,
     max_parallel: int = 4,
     dry_run: bool = False,
     auto_reconcile: bool = False,
+    timeout: int = 600,
+    focus: bool = False,
 ) -> SwarmExecutionResult:
-    """Execute ready tickets across DAG waves.
-    
-    If dry_run=True, plans execution without spawning workers.
-    If auto_reconcile=True, attempts reconcile_subagent_ticket for completed work.
-    """
-    plan = plan_spec_swarm(project_root, spec_id, agent=agent, model=model)
+    """Execute ready tickets wave by wave, bounded by ``max_parallel``."""
+    if max_parallel < 1:
+        return SwarmExecutionResult(
+            spec_id=spec_id, status="error", executed_waves=0,
+            details="max_parallel must be at least 1",
+        )
 
+    plan = plan_spec_swarm(project_root, spec_id, agent=agent, model=model)
+    if dry_run:
+        return SwarmExecutionResult(
+            spec_id=spec_id,
+            status="completed",
+            executed_waves=len(plan.waves),
+            dispatched_tickets=list(plan.ready_tickets),
+            details="Dry run: no workers launched.",
+        )
     if not plan.ready_tickets:
         if len(plan.completed_tickets) == plan.total_tickets:
             return SwarmExecutionResult(
-                spec_id=spec_id,
-                status="completed",
-                executed_waves=len(plan.waves),
+                spec_id=spec_id, status="completed", executed_waves=len(plan.waves),
                 details="All tickets in spec DAG are already completed.",
             )
         return SwarmExecutionResult(
-            spec_id=spec_id,
-            status="no_work",
-            executed_waves=0,
+            spec_id=spec_id, status="no_work", executed_waves=0,
             details=f"No tickets ready to execute (waiting on dependencies: {plan.blocked_tickets}).",
         )
 
     dispatched: List[str] = []
     reconciled: List[str] = []
     failed: List[str] = []
+    executed_waves = 0
 
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     from .multiplexers import wait_for_subagent_completion
 
-    # Filter ready tickets bounded by max_parallel
-    to_dispatch = plan.ready_tickets[:max_parallel]
-    dispatch_records = []
-
-    for tid in to_dispatch:
-        try:
-            res = dispatch_ticket(
-                project_root=project_root,
-                spec_id=spec_id,
-                ticket_id=tid,
-                agent=agent or "omp",
-                model=model,
-                visual=visual,
-                dry_run=dry_run,
+    while True:
+        plan = plan_spec_swarm(project_root, spec_id, agent=agent, model=model)
+        if len(plan.completed_tickets) == plan.total_tickets:
+            return SwarmExecutionResult(
+                spec_id=spec_id, status="completed", executed_waves=executed_waves,
+                dispatched_tickets=dispatched, reconciled_tickets=reconciled,
+                failed_tickets=failed, details="All dependency waves completed.",
             )
-            dispatched.append(tid)
-            dispatch_records.append((tid, res))
-        except Exception:
-            failed.append(tid)
+        ready = plan.ready_tickets[:max_parallel]
+        if not ready:
+            return SwarmExecutionResult(
+                spec_id=spec_id, status="partial" if dispatched or failed else "no_work",
+                executed_waves=executed_waves, dispatched_tickets=dispatched,
+                reconciled_tickets=reconciled, failed_tickets=failed,
+                details=f"No tickets ready; dependent tickets remain: {plan.blocked_tickets}.",
+            )
 
-    if auto_reconcile and not dry_run:
-        for tid, res in dispatch_records:
+        executed_waves += 1
+        records: dict[str, dict[str, Any]] = {}
+        def launch(ticket_id: str) -> tuple[str, dict[str, Any]]:
             try:
-                # Wait reactively if visual
-                if visual and isinstance(res, dict):
-                    mux_name = res.get("multiplexer", "none")
-                    target = res.get("pane_id")
-                    wait_for_subagent_completion(mux_name, target, timeout_sec=180)
+                return ticket_id, dispatch_ticket(
+                    project_root=project_root, spec_id=spec_id, ticket_id=ticket_id,
+                    agent=agent or "pi", model=model, thinking=thinking,
+                    visual=visual, focus=focus, multiplexer=multiplexer,
+                    timeout=timeout,
+                )
+            except Exception as exc:
+                return ticket_id, {"status": "error", "error": str(exc)}
 
-                rec = reconcile_subagent_ticket(project_root, tid)
-                if rec.status == "merged":
-                    reconciled.append(tid)
+        with ThreadPoolExecutor(max_workers=min(max_parallel, len(ready))) as pool:
+            futures = [pool.submit(launch, ticket_id) for ticket_id in ready]
+            for future in as_completed(futures):
+                ticket_id, result = future.result()
+                records[ticket_id] = result
+                if result.get("status") in ("dispatched", "completed"):
+                    dispatched.append(ticket_id)
                 else:
-                    failed.append(tid)
-            except Exception:
-                failed.append(tid)
+                    failed.append(ticket_id)
 
-    status = "completed" if not failed else "partial"
+        for ticket_id in ready:
+            result = records.get(ticket_id, {})
+            if result.get("status") not in ("dispatched", "completed"):
+                continue
+            if not auto_reconcile:
+                continue
+            if visual:
+                target = result.get("pane_id") or result.get("window_id")
+                wait_result = wait_for_subagent_completion(
+                    result.get("multiplexer", "none"), target, timeout_sec=timeout,
+                )
+                if wait_result.status != "completed":
+                    failed.append(ticket_id)
+                    continue
+            rec = reconcile_subagent_ticket(project_root, ticket_id)
+            if rec.status == "merged":
+                reconciled.append(ticket_id)
+            else:
+                failed.append(ticket_id)
+
+        if failed or not auto_reconcile:
+            break
+
+    unique_failed = list(dict.fromkeys(failed))
+    status = "completed" if not unique_failed and auto_reconcile else "partial"
     return SwarmExecutionResult(
-        spec_id=spec_id,
-        status=status,
-        executed_waves=1,
-        dispatched_tickets=dispatched,
-        reconciled_tickets=reconciled,
-        failed_tickets=failed,
-        details=f"Dispatched {len(dispatched)} ticket(s) in parallel.",
+        spec_id=spec_id, status=status, executed_waves=executed_waves,
+        dispatched_tickets=list(dict.fromkeys(dispatched)),
+        reconciled_tickets=list(dict.fromkeys(reconciled)),
+        failed_tickets=unique_failed,
+        details="Dependency waves stopped after dispatch failure or without auto-reconcile."
+        if unique_failed or not auto_reconcile else "All dependency waves completed.",
     )

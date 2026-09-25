@@ -387,10 +387,11 @@ tenx mcp install               # writes managed .mcp.json (Claude Code)
 #   command: tenx   args: ["mcp"]
 ```
 
-Exposed tools (17): `tenx_context`, `tenx_next`, `tenx_watchdog`,
+Exposed tools (21): `tenx_context`, `tenx_next`, `tenx_watchdog`,
 `tenx_triage`, `tenx_status`, `tenx_show`, `tenx_list`, `tenx_ticket`,
-`tenx_log`, `tenx_validate`, `tenx_scan`, `tenx_exec`, `tenx_changelog`,
-`tenx_capabilities`, `tenx_converge`, `tenx_ticket_brief`, `tenx_dispatch`. Each maps onto the same code path
+`tenx_log`, `tenx_validate`, `tenx_scan`, `tenx_exec`, `tenx_ticket_brief`,
+`tenx_dispatch`, `tenx_reconcile`, `tenx_abort`, `tenx_dag`, `tenx_swarm`,
+`tenx_changelog`, `tenx_capabilities`, and `tenx_converge`. Each maps onto the same code path
 as the CLI command, so output and exit semantics match exactly;
 mutating tools also take the same per-project advisory lock as the CLI
 (`tenx_converge` locks only when `append` is set). The server is
@@ -458,6 +459,7 @@ tenx dispatch SPC-001 SPC-001-T1 --dry-run
 
 - **Zero-token context slicing (`tenx ticket-brief`):** Instead of injecting entire epics, specs, and historical transcripts, `tenx ticket-brief` extracts only what the child agent strictly needs: the ticket task, description, matching functional requirements (`FR-###`) parsed from the parent spec, conventions indexed in `.tenx/conventions/INDEX.md`, and the landing/test discipline.
 - **Parent-commit git worktree isolation:** `tenx dispatch` creates an isolated git worktree at `.tenx/worktrees/<TICKET-ID>` branched strictly from the parent checkout's current `HEAD` commit (`git rev-parse HEAD`), on a dedicated branch named `tenx/<TICKET-ID>`. Workers run in complete filesystem isolation without polluting or conflicting with the parent working tree.
+- **Receipt-backed lifecycle:** dispatch stores stable worker resources under `.tenx/dispatch/<TICKET-ID>/`; reconcile closes only the recorded Herdr workspace or tmux window, rejects dirty worktrees, and verifies teardown instead of reporting false success.
 - **Multi-harness runner support:** Out of the box, `tenx dispatch` constructs optimized execution commands for approved coding harnesses:
   - **Oh My Pi (omp):** `omp -p --cwd <worktree> [--model <model>] [--thinking <level>]`
   - **Pi (pi):** `pi -p [--model <model>] [--thinking <level>]`
@@ -465,7 +467,7 @@ tenx dispatch SPC-001 SPC-001-T1 --dry-run
   - **Codex CLI:** `codex exec --dangerously-bypass-approvals-and-sandbox -C <worktree>`
   - **Generic CLI fallback:** Any executable CLI agent available on `PATH`.
 - **Enforced landing loop:** Dispatched workers implement changes within their worktree, execute tests, update ticket status (`tenx ticket <SPEC> <TICKET> done`), log progress with artifact references (`tenx log ... --ref <SPEC>`), and ensure `tenx validate` reports 0 errors before finishing.
-- **Supervisor delegation protocol:** Dispatched subagent workflows are exposed natively to agents via the `tenx_dispatch` and `tenx_ticket_brief` MCP tools, as well as the bundled `tenx-dispatch` skill (`tenx skills install`).
+- **Supervisor delegation protocol:** Dispatched subagent workflows are exposed natively to agents via `tenx_dispatch`, `tenx_reconcile`, `tenx_abort`, `tenx_dag`, `tenx_swarm`, and `tenx_ticket_brief` MCP tools, as well as the bundled `tenx-dispatch` skill (`tenx skills install`).
 
 ### Visual terminal multiplexer projection (Herdr and tmux)
 

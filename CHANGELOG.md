@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-09-25
+
+### Fixed
+- Fixed Herdr-backed subagent dispatch lifecycle: Herdr skill-first supervision guidance, managed-session guards, verified agent startup receipts, explicit lifecycle outcomes, and bundled-skill drift detection. (SPC-035)
+- Fixed dispatch lifecycle reliability: receipt-backed resource teardown, dirty-worktree protection, verified Herdr agent startup, bounded multi-wave swarm, MCP DAG/swarm tools, focus flags, adapter validation, and installed skill synchronization. (SPC-035)
+
 ## [0.25.0] - 2026-09-15
 
 ### Added

@@ -25,6 +25,8 @@ from .multiplexers import (
     plan_visual_projection,
     position_herdr_workspace_below_parent,
 )
+from .subagent_state import brief_path as state_brief_path
+from .subagent_state import write_receipt
 from .router import resolve_model_route
 
 
@@ -165,6 +167,114 @@ class AgentCommand:
     notes: str = ""
 
 
+def _herdr_agent_kind(agent: str) -> str | None:
+    """Return Herdr's recognized kind for a supported dispatch harness."""
+    return {
+        "omp": "omp",
+        "oh-my-pi": "omp",
+        "pi": "pi",
+        "pi-agent": "pi",
+        "codex": "codex",
+        "codex-cli": "codex",
+    }.get(agent.lower().strip())
+
+
+def _run_herdr_command(args: list[str], timeout: int = 15) -> dict[str, Any]:
+    """Run one official Herdr CLI command and normalize its JSON/error result."""
+    try:
+        proc = subprocess.run(
+            ["herdr", *args],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {"ok": False, "error": f"Herdr command failed to run: {exc}"}
+    if proc.returncode != 0:
+        return {
+            "ok": False,
+            "error": proc.stderr.strip() or proc.stdout.strip() or
+            f"Herdr command exited {proc.returncode}",
+        }
+    try:
+        payload = json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        return {"ok": False, "error": f"Herdr returned invalid JSON: {exc}"}
+    if not isinstance(payload, dict) or payload.get("error"):
+        return {"ok": False, "error": payload.get("error") if isinstance(payload, dict) else "Herdr returned an invalid response"}
+    return {"ok": True, "payload": payload}
+
+
+def _start_herdr_agent(
+    brief_path: Path,
+    ticket_id: str,
+    agent: str,
+    model: str | None,
+    thinking: str | None,
+    pane_id: str,
+    workspace_id: str | None,
+    timeout: int,
+) -> dict[str, Any]:
+    """Start and prompt a recognized agent through Herdr's agent surface."""
+    kind = _herdr_agent_kind(agent)
+    if not kind:
+        return {"ok": False, "error": f"Herdr does not recognize agent kind '{agent}'"}
+    name = "tenx_" + re.sub(r"[^a-z0-9_-]", "_", ticket_id.lower())[:24]
+    start_args = [
+        "agent", "start", name, "--kind", kind, "--pane", pane_id,
+        "--timeout", str(timeout * 1000),
+    ]
+    native_args: list[str] = []
+    if model and kind in ("omp", "pi", "codex", "grok"):
+        native_args.extend(["--model", model])
+    if thinking and kind in ("omp", "pi"):
+        native_args.extend(["--thinking", thinking])
+    if thinking and kind == "grok":
+        native_args.extend(["--reasoning-effort", thinking])
+    if native_args:
+        start_args.extend(["--", *native_args])
+    started = _run_herdr_command(start_args, timeout=timeout + 5)
+    if not started["ok"]:
+        return started
+    agent_payload = started["payload"].get("result", {}).get("agent", {})
+    prompt = (
+        f"Read {brief_path} and implement this ticket completely. "
+        "Run the exact tests and tenx validate required by the brief. "
+        "Record progress and stop cleanly when complete."
+    )
+    prompted = _run_herdr_command(
+        ["agent", "prompt", name, prompt, "--wait", "--timeout", str(timeout * 1000)],
+        timeout=timeout + 5,
+    )
+    if not prompted["ok"]:
+        return {"ok": False, "error": prompted["error"], "agent_name": name}
+    inspected = _run_herdr_command(["agent", "get", name], timeout=15)
+    if not inspected["ok"]:
+        return {"ok": False, "error": inspected["error"], "agent_name": name}
+    current = inspected["payload"].get("result", {}).get("agent", {})
+    status = current.get("agent_status")
+    if status == "blocked":
+        return {
+            "ok": False,
+            "error": "Herdr agent is blocked; inspect agent output before retrying",
+            "agent_name": name,
+            "agent_status": status,
+        }
+    if status not in ("idle", "done"):
+        return {
+            "ok": False,
+            "error": f"Herdr agent did not reach a settled state (status: {status or 'unknown'})",
+            "agent_name": name,
+            "agent_status": status,
+        }
+    return {
+        "ok": True,
+        "agent_name": name,
+        "agent": agent_payload,
+        "agent_status": status,
+        "workspace_id": workspace_id,
+        "pane_id": pane_id,
+    }
 def resolve_agent_command(
     agent: str,
     worktree_dir: Path,
@@ -180,9 +290,9 @@ def resolve_agent_command(
     and tool executions, exactly like firstmate.
     """
     agent_norm = agent.lower().strip()
-    brief_rel = brief_path.name
+    brief_ref = str(brief_path)
     prompt = (
-        f"Read {brief_rel} and implement the ticket completely. "
+        f"Read {brief_ref} and implement the ticket completely. "
         "Run tests and tenx validate before finishing."
     )
 
@@ -251,18 +361,58 @@ def resolve_agent_command(
             is_headless=not interactive,
             notes="Prime Agent interactive TUI" if interactive else "Prime Agent execution"
         )
-    else:
-        # Generic fallback
-        bin_name = agent
-        if interactive:
-            cmd = [bin_name, prompt] if shutil.which(bin_name) else ["echo", f"Agent binary '{bin_name}' not found on PATH"]
+    elif agent_norm in ("grok",):
+        if not shutil.which("grok"):
+            raise RuntimeError("Agent binary 'grok' not found on PATH")
+        cmd = ["grok"]
+        if not interactive:
+            cmd.extend(["--single", prompt])
         else:
-            cmd = [bin_name, "-p", prompt] if shutil.which(bin_name) else ["echo", f"Agent binary '{bin_name}' not found on PATH"]
+            cmd.append(prompt)
+        if model:
+            cmd.extend(["--model", model])
+        if thinking:
+            cmd.extend(["--reasoning-effort", thinking])
+        return AgentCommand(
+            agent="grok",
+            cmd=cmd,
+            is_headless=not interactive,
+            notes="Grok Build interactive TUI" if interactive else "Grok Build headless execution",
+        )
+    elif agent_norm in ("claude", "claude-code"):
+        if not shutil.which("claude"):
+            raise RuntimeError("Agent binary 'claude' not found on PATH")
+        cmd = ["claude"]
+        if not interactive:
+            cmd.append("-p")
+        if model:
+            cmd.extend(["--model", model])
+        cmd.append(prompt)
+        return AgentCommand(
+            agent="claude",
+            cmd=cmd,
+            is_headless=not interactive,
+            notes="Claude Code interactive TUI" if interactive else "Claude Code headless execution",
+        )
+    elif agent_norm in ("dsh", "deepseek-harness"):
+        if not shutil.which("dsh"):
+            raise RuntimeError("Agent binary 'dsh' not found on PATH")
+        cmd = ["dsh", "headless", prompt]
+        return AgentCommand(
+            agent="dsh",
+            cmd=cmd,
+            is_headless=True,
+            notes="DeepSeek Harness headless execution",
+        )
+    else:
+        if not shutil.which(agent):
+            raise RuntimeError(f"Agent binary '{agent}' not found on PATH")
+        cmd = [agent, prompt] if interactive else [agent, "-p", prompt]
         return AgentCommand(
             agent=agent,
             cmd=cmd,
             is_headless=not interactive,
-            notes="Generic CLI adapter fallback"
+            notes="Generic CLI adapter fallback",
         )
 
 
@@ -274,7 +424,15 @@ def setup_worktree(project_root: Path, ticket_id: str) -> Path:
     branch_name = f"tenx/{ticket_id}"
 
     if target_dir.exists():
-        return target_dir
+        registered = subprocess.run(
+            ["git", "worktree", "list", "--porcelain"],
+            cwd=str(project_root),
+            capture_output=True,
+            text=True,
+        )
+        if registered.returncode == 0 and f"worktree {target_dir}" in registered.stdout:
+            return target_dir
+        raise RuntimeError(f"Dispatch path exists but is not a registered worktree: {target_dir}")
 
     # Check git availability
     if not shutil.which("git"):
@@ -341,8 +499,14 @@ def dispatch_ticket(
 
     brief_content = build_ticket_brief(harness, spec, ticket_id, project_root)
     worktree_path = project_root / ".tenx" / "worktrees" / ticket_id
-    brief_file = worktree_path / "TICKET_BRIEF.md"
-    agent_cmd = resolve_agent_command(agent, worktree_path, brief_file, model=active_model, thinking=thinking, interactive=visual)
+    brief_file = state_brief_path(project_root, ticket_id)
+    try:
+        agent_cmd = resolve_agent_command(
+            agent, worktree_path, brief_file, model=active_model,
+            thinking=thinking, interactive=visual,
+        )
+    except RuntimeError as exc:
+        return {"status": "error", "error": str(exc), "spec_id": spec_id, "ticket_id": ticket_id}
 
     mux_target = detect_multiplexer(preference="none" if not visual else multiplexer)
     projection = plan_visual_projection(mux_target, ticket_id, worktree_path, agent_cmd.cmd, focus=focus) if visual else None
@@ -377,81 +541,141 @@ def dispatch_ticket(
             }
         return res
 
+    if visual and projection and projection.multiplexer == "herdr" and not mux_target.is_active:
+        return {
+            "status": "error",
+            "spec_id": spec_id,
+            "ticket_id": ticket_id,
+            "error": "Herdr visual dispatch requires HERDR_ENV=1 and an active Herdr CLI; read skill://herdr and run from a Herdr-managed pane",
+        }
+
     # Setup worktree
     try:
         wt_dir = setup_worktree(project_root, ticket_id)
     except Exception as e:
         return {"status": "error", "error": f"Worktree creation failed: {e}"}
 
-    # Write brief
-    wt_brief = wt_dir / "TICKET_BRIEF.md"
+    # Keep launch instructions outside the worktree so reconcile can reject
+    # every real uncommitted change without special-casing the brief.
+    wt_brief = state_brief_path(project_root, ticket_id)
+    wt_brief.parent.mkdir(parents=True, exist_ok=True)
     wt_brief.write_text(brief_content, encoding="utf-8")
 
-    # If visual projection is requested, launch through multiplexer
+    # If visual projection is requested, launch through the official
+    # multiplexer surface and require a verified agent receipt.
     if visual and projection:
-        # Create multiplexer container (workspace or window)
         try:
-            res_mux = subprocess.run(projection.create_cmd, capture_output=True, text=True, timeout=10)
-            if res_mux.returncode != 0:
-                return {
-                    "status": "error",
-                    "spec_id": spec_id,
-                    "ticket_id": ticket_id,
-                    "error": f"Multiplexer creation failed ({projection.multiplexer}): {res_mux.stderr.strip() or res_mux.stdout.strip()}",
-                }
-
-            # If multiplexer is herdr, extract workspace_id and pane_id from json response
             if projection.multiplexer == "herdr":
-                pane_id = None
-                child_ws_id = None
+                res_mux = subprocess.run(projection.create_cmd, capture_output=True, text=True, timeout=10)
+                if res_mux.returncode != 0:
+                    return {
+                        "status": "error",
+                        "spec_id": spec_id,
+                        "ticket_id": ticket_id,
+                        "error": f"Multiplexer creation failed ({projection.multiplexer}): {res_mux.stderr.strip() or res_mux.stdout.strip()}",
+                    }
+            if projection.multiplexer == "herdr":
+                if os.environ.get("HERDR_ENV") != "1":
+                    return {
+                        "status": "error",
+                        "spec_id": spec_id,
+                        "ticket_id": ticket_id,
+                        "error": "Herdr visual dispatch requires HERDR_ENV=1; read skill://herdr and run from a Herdr-managed pane",
+                    }
                 try:
                     out_json = json.loads(res_mux.stdout)
                     res_payload = out_json.get("result", {})
                     child_ws_id = res_payload.get("workspace", {}).get("workspace_id")
                     pane_id = res_payload.get("root_pane", {}).get("pane_id")
-                except Exception:
-                    pass
-
-                # Reposition child workspace directly below parent in Herdr left sidebar
+                except (AttributeError, json.JSONDecodeError) as exc:
+                    return {
+                        "status": "error",
+                        "spec_id": spec_id,
+                        "ticket_id": ticket_id,
+                        "error": f"Herdr workspace creation returned invalid JSON: {exc}",
+                    }
+                if not child_ws_id or not pane_id:
+                    return {
+                        "status": "error",
+                        "spec_id": spec_id,
+                        "ticket_id": ticket_id,
+                        "error": "Herdr workspace creation did not return both workspace_id and root pane_id",
+                    }
                 sock_path = os.environ.get("HERDR_SOCKET_PATH") or str(Path.home() / ".config" / "herdr" / "herdr.sock")
-                if child_ws_id and os.path.exists(sock_path):
+                if os.path.exists(sock_path):
                     position_herdr_workspace_below_parent(sock_path, child_ws_id)
-
-                # In Herdr, launch the agent directly into the workspace's root pane
-                # using send-text + enter (or pane run) so the interactive TUI chat starts immediately.
-                import shlex
-                agent_cmd_str = shlex.join(agent_cmd.cmd)
-                if pane_id:
-                    # Send command and submit via enter to start live interactive agent chat
-                    subprocess.run(["herdr", "pane", "send-text", pane_id, agent_cmd_str], capture_output=True, text=True, timeout=10)
-                    subprocess.run(["herdr", "pane", "send-keys", pane_id, "enter"], capture_output=True, text=True, timeout=10)
-                else:
-                    subprocess.run(["herdr", "pane", "run", agent_cmd_str], capture_output=True, text=True, timeout=10)
-            elif projection.run_cmd:
-                subprocess.run(projection.run_cmd, capture_output=True, text=True, timeout=10)
-
-            res_dict = {
-                "status": "dispatched",
-                "spec_id": spec_id,
-                "ticket_id": ticket_id,
-                "worktree_path": str(wt_dir),
-                "branch": f"tenx/{ticket_id}",
-                "agent": agent_cmd.agent,
-                "visual": True,
-                "multiplexer": projection.multiplexer,
-                "projection_summary": projection.summary,
-                "notes": f"Running visually in {projection.multiplexer} ({projection.summary})",
-            }
-            if projection.multiplexer == "herdr" and pane_id:
-                res_dict["pane_id"] = pane_id
-                res_dict["workspace_id"] = child_ws_id
-            return res_dict
-        except Exception as e:
+                receipt = {
+                    "status": "starting",
+                    "spec_id": spec_id,
+                    "ticket_id": ticket_id,
+                    "worktree_path": str(wt_dir),
+                    "branch": f"tenx/{ticket_id}",
+                    "multiplexer": "herdr",
+                    "workspace_id": child_ws_id,
+                    "pane_id": pane_id,
+                    "agent": agent_cmd.agent,
+                    "brief_path": str(wt_brief),
+                }
+                write_receipt(project_root, ticket_id, receipt)
+                started = _start_herdr_agent(
+                    brief_path=wt_brief,
+                    ticket_id=ticket_id,
+                    agent=agent_cmd.agent,
+                    model=active_model,
+                    thinking=thinking,
+                    pane_id=pane_id,
+                    workspace_id=child_ws_id,
+                    timeout=timeout or 600,
+                )
+                if not started["ok"]:
+                    receipt.update({"status": "error", "error": started["error"], "agent_name": started.get("agent_name")})
+                    write_receipt(project_root, ticket_id, receipt)
+                    return {**receipt, "stderr": started["error"]}
+                receipt.update({
+                    "status": "completed" if started.get("agent_status") in ("idle", "done") else "dispatched",
+                    "agent_name": started["agent_name"],
+                    "agent_status": started.get("agent_status"),
+                })
+                write_receipt(project_root, ticket_id, receipt)
+                return {
+                    **receipt,
+                    "visual": True,
+                    "projection_summary": projection.summary,
+                    "notes": f"Herdr agent settled in state {started.get('agent_status')}",
+                }
+            elif projection.multiplexer == "tmux":
+                created = subprocess.run(projection.create_cmd, capture_output=True, text=True, timeout=10)
+                if created.returncode != 0:
+                    return {
+                        "status": "error",
+                        "spec_id": spec_id,
+                        "ticket_id": ticket_id,
+                        "worktree_path": str(wt_dir),
+                        "error": created.stderr.strip() or created.stdout.strip() or "tmux window creation failed",
+                    }
+                window_id, _, pane_id = created.stdout.strip().partition(":")
+                receipt = {
+                    "status": "dispatched",
+                    "spec_id": spec_id,
+                    "ticket_id": ticket_id,
+                    "worktree_path": str(wt_dir),
+                    "branch": f"tenx/{ticket_id}",
+                    "multiplexer": "tmux",
+                    "window_id": window_id,
+                    "pane_id": pane_id or None,
+                    "agent": agent_cmd.agent,
+                    "brief_path": str(wt_brief),
+                    "visual": True,
+                    "projection_summary": projection.summary,
+                }
+                write_receipt(project_root, ticket_id, receipt)
+                return receipt
+        except Exception as exc:
             return {
                 "status": "error",
                 "spec_id": spec_id,
                 "ticket_id": ticket_id,
-                "error": f"Multiplexer execution failed: {e}",
+                "error": f"Multiplexer execution failed: {exc}",
             }
 
     # Execute headless agent command
@@ -463,31 +687,46 @@ def dispatch_ticket(
             text=True,
             timeout=timeout,
         )
-        return {
+        receipt = {
             "status": "completed" if proc.returncode == 0 else "failed",
             "returncode": proc.returncode,
             "spec_id": spec_id,
             "ticket_id": ticket_id,
             "worktree_path": str(wt_dir),
             "branch": f"tenx/{ticket_id}",
+            "agent": agent_cmd.agent,
+            "multiplexer": "none",
+            "brief_path": str(wt_brief),
             "stdout": proc.stdout[-2000:] if proc.stdout else "",
             "stderr": proc.stderr[-2000:] if proc.stderr else "",
         }
+        write_receipt(project_root, ticket_id, receipt)
+        return receipt
     except subprocess.TimeoutExpired:
-        return {
+        receipt = {
             "status": "timeout",
             "spec_id": spec_id,
             "ticket_id": ticket_id,
             "worktree_path": str(wt_dir),
             "branch": f"tenx/{ticket_id}",
+            "agent": agent_cmd.agent,
+            "multiplexer": "none",
+            "brief_path": str(wt_brief),
             "error": f"Execution timed out after {timeout} seconds",
         }
-    except Exception as e:
-        return {
+        write_receipt(project_root, ticket_id, receipt)
+        return receipt
+    except Exception as exc:
+        receipt = {
             "status": "error",
             "spec_id": spec_id,
             "ticket_id": ticket_id,
             "worktree_path": str(wt_dir),
             "branch": f"tenx/{ticket_id}",
-            "error": str(e),
+            "agent": agent_cmd.agent,
+            "multiplexer": "none",
+            "brief_path": str(wt_brief),
+            "error": str(exc),
         }
+        write_receipt(project_root, ticket_id, receipt)
+        return receipt

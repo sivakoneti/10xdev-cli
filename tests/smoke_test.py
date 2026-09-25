@@ -536,7 +536,7 @@ def main() -> int:
         check("mcp initialize negotiates",
               resp[1]["result"]["serverInfo"]["name"] == "tenx")
         tool_names = {t["name"] for t in resp[2]["result"]["tools"]}
-        check("mcp lists 19 tools", len(tool_names) == 19,
+        check("mcp lists 21 tools", len(tool_names) == 21,
               str(tool_names))
         check("mcp exposes tenx_context", "tenx_context" in tool_names)
         check("mcp exposes tenx_converge", "tenx_converge" in tool_names)
@@ -551,6 +551,8 @@ def main() -> int:
               "tenx_reconcile" in tool_names)
         check("mcp exposes tenx_abort",
               "tenx_abort" in tool_names)
+        check("mcp exposes tenx_dag", "tenx_dag" in tool_names)
+        check("mcp exposes tenx_swarm", "tenx_swarm" in tool_names)
         check("mcp tools/call works",
               resp[3]["result"]["isError"] is False
               and "tenx validate" in resp[3]["result"]["content"][0]["text"])
@@ -1854,6 +1856,19 @@ def main() -> int:
             skills_out = tenx("skills", "list", cwd=dproj).stdout
             check("SPC-028 T3: tenx-dispatch skill listed",
                   "tenx-dispatch" in skills_out)
+            tenx("skills", "install", cwd=dproj)
+            if USE_MODULE:
+                skills_status = tenx("skills", "status", cwd=dproj).stdout
+                check("SPC-035 T1: installed dispatch skill is current",
+                      "tenx-dispatch: current" in skills_status and "Skill drift:" not in skills_status)
+            check("SPC-035 T3: Herdr dry-run uses agent start template",
+                  "agent" in dr_vh_j.get("projection", {}).get("run_cmd", []) and
+                  "--pane" in dr_vh_j.get("projection", {}).get("run_cmd", []))
+            no_focus = tenx("dispatch", "SPC-001", "SPC-001-T1", "--visual", "--no-focus", "--dry-run", "--json", cwd=dproj)
+            check("SPC-035 T3: --no-focus is accepted",
+                  "--no-focus" in no_focus.stdout)
+            check("SPC-035 T3: missing adapter fails closed",
+                  tenx("dispatch", "SPC-001", "SPC-001-T1", "--agent", "definitely-missing", "--dry-run", "--json", cwd=dproj, expect_rc=1).stdout.find("not found") >= 0)
 
             # 6. Test SPC-030: Model Routing and Multi-Harness command builders (omp, prime-agent, codex)
             from tenx.dispatch import resolve_agent_command
@@ -1926,6 +1941,15 @@ def main() -> int:
                   rec_res.status == "merged" and (dproj / "SUBAGENT_WORK.txt").exists())
             check("SPC-032 T1: worktree directory removed after merge",
                   not wt_path.exists())
+            dirty_ticket = "SPC-001-T3"
+            dirty_wt = dproj / ".tenx" / "worktrees" / dirty_ticket
+            subprocess.run(["git", "worktree", "add", "-b", f"tenx/{dirty_ticket}", str(dirty_wt), "HEAD"], cwd=dproj, capture_output=True)
+            (dirty_wt / "UNCOMMITTED.txt").write_text("preserve me")
+            dirty_rec = reconcile_subagent_ticket(dproj, dirty_ticket, skip_verify=True)
+            check("SPC-035 T3: dirty worktree is preserved",
+                  dirty_rec.status == "dirty_worktree" and dirty_wt.exists() and (dirty_wt / "UNCOMMITTED.txt").exists())
+            subprocess.run(["git", "worktree", "remove", "--force", str(dirty_wt)], cwd=dproj, capture_output=True)
+            subprocess.run(["git", "branch", "-D", f"tenx/{dirty_ticket}"], cwd=dproj, capture_output=True)
 
             # Test abort on a second ticket worktree
             abort_ticket = "SPC-001-T2"
@@ -2018,8 +2042,14 @@ def main() -> int:
 
             # Test wait_for_subagent_completion
             from tenx.multiplexers import wait_for_subagent_completion
-            check("SPC-034 T1: wait_for_subagent_completion fallback returns True",
-                  wait_for_subagent_completion("none") is True)
+            check("SPC-034 T1: nonvisual wait is explicit",
+                  wait_for_subagent_completion("none").status == "not_applicable")
+            check("SPC-035 T3: missing visual target is not completion",
+                  wait_for_subagent_completion("herdr", None).status == "missing")
+            check("SPC-035 T3: Herdr missing target fails closed",
+                  wait_for_subagent_completion("herdr", None).status == "missing")
+            check("SPC-035 T3: tmux missing target fails closed",
+                  wait_for_subagent_completion("tmux", None).status == "missing")
 
         finally:
             shutil.rmtree(dproj, ignore_errors=True)

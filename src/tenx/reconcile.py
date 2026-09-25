@@ -10,11 +10,12 @@ from typing import Any, Dict, List, Optional
 from tenx.activity import append_entry
 from tenx.artifacts import load_harness, update_meta, Artifact
 from tenx.multiplexers import _herdr_send_rpc
+from tenx.subagent_state import clear_receipt, read_receipt
 
 
 @dataclass
 class ReconcileResult:
-    status: str  # "merged", "verified_failed", "conflict", "aborted", "error"
+    status: str  # merged, verified_failed, conflict, dirty_worktree, teardown_failed, aborted, error
     ticket_id: str
     spec_id: Optional[str] = None
     branch: Optional[str] = None
@@ -35,50 +36,82 @@ def _find_ticket_and_spec(project_root: Path, ticket_id: str) -> tuple[Optional[
     return None, None
 
 
-def _close_associated_herdr_workspaces(project_root: Path, ticket_id: str) -> List[str]:
-    """Identify and close Herdr workspaces associated with this ticket worktree."""
-    closed = []
+def _close_herdr_workspace(workspace_id: str) -> tuple[List[str], List[str]]:
     sock_path = os.environ.get("HERDR_SOCKET_PATH") or str(Path.home() / ".config" / "herdr" / "herdr.sock")
     if not os.path.exists(sock_path):
-        return closed
-
-    # List workspaces
-    res = _herdr_send_rpc(sock_path, "workspace.list", {})
-    if not res or "result" not in res:
-        return closed
-
-    workspaces = res["result"].get("workspaces", [])
-    expected_wt = str(project_root / ".tenx" / "worktrees" / ticket_id)
-
-    for ws in workspaces:
-        ws_id = ws.get("workspace_id")
-        label = ws.get("label", "")
-        # Check label matching ticket_id or checkout_path matching worktree
-        wt_info = ws.get("worktree", {})
-        checkout = wt_info.get("checkout_path", "") if isinstance(wt_info, dict) else ""
-
-        if ticket_id in label or (checkout and checkout == expected_wt):
-            _herdr_send_rpc(sock_path, "workspace.close", {"workspace_id": ws_id})
-            closed.append(ws_id)
-
-    return closed
+        return [], [f"Herdr socket unavailable: {sock_path}"]
+    response = _herdr_send_rpc(sock_path, "workspace.close", {"workspace_id": workspace_id})
+    if not response or response.get("error"):
+        detail = (response or {}).get("error", "workspace.close returned no response")
+        return [], [f"{workspace_id}: {detail}"]
+    return [workspace_id], []
 
 
-def _close_associated_tmux_windows(ticket_id: str) -> List[str]:
-    """Close any tmux window matching ticket_id."""
-    closed = []
-    try:
-        res = subprocess.run(["tmux", "list-windows", "-F", "#{window_id}:#{window_name}"], capture_output=True, text=True)
-        if res.returncode == 0:
-            for line in res.stdout.strip().splitlines():
-                if ":" in line:
-                    wid, wname = line.split(":", 1)
-                    if ticket_id in wname:
-                        subprocess.run(["tmux", "kill-window", "-t", wid], capture_output=True, text=True)
-                        closed.append(wid)
-    except Exception:
-        pass
-    return closed
+def _close_tmux_window(window_id: str) -> tuple[List[str], List[str]]:
+    proc = subprocess.run(
+        ["tmux", "kill-window", "-t", window_id],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        return [], [f"{window_id}: {proc.stderr.strip() or proc.stdout.strip()}"]
+    return [window_id], []
+
+
+def _close_dispatch_resources(project_root: Path, ticket_id: str) -> tuple[List[str], List[str]]:
+    receipt = read_receipt(project_root, ticket_id)
+    closed: List[str] = []
+    errors: List[str] = []
+    if receipt.get("multiplexer") == "herdr" and receipt.get("workspace_id"):
+        ids, failures = _close_herdr_workspace(str(receipt["workspace_id"]))
+        closed.extend(ids)
+        errors.extend(failures)
+    if receipt.get("multiplexer") == "tmux" and receipt.get("window_id"):
+        ids, failures = _close_tmux_window(str(receipt["window_id"]))
+        closed.extend(ids)
+        errors.extend(failures)
+    return closed, errors
+
+
+def _worktree_is_dirty(worktree_dir: Path) -> tuple[bool, str]:
+    proc = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=str(worktree_dir),
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        return True, proc.stderr.strip() or proc.stdout.strip() or "git status failed"
+    return bool(proc.stdout.strip()), proc.stdout.strip()
+
+
+def _remove_worktree_and_branch(project_root: Path, worktree_dir: Path, branch_name: str, force: bool = False) -> List[str]:
+    errors: List[str] = []
+    if worktree_dir.exists():
+        remove_cmd = ["git", "worktree", "remove"]
+        if force:
+            remove_cmd.append("--force")
+        remove_cmd.append(str(worktree_dir))
+        removed = subprocess.run(
+            remove_cmd,
+            cwd=str(project_root), capture_output=True, text=True,
+        )
+        if removed.returncode != 0:
+            errors.append(f"worktree remove failed: {removed.stderr.strip() or removed.stdout.strip()}")
+    branch = subprocess.run(
+        ["git", "branch", "--list", branch_name],
+        cwd=str(project_root), capture_output=True, text=True,
+    )
+    if branch.returncode == 0 and branch.stdout.strip():
+        deleted = subprocess.run(
+            ["git", "branch", "-D", branch_name],
+            cwd=str(project_root), capture_output=True, text=True,
+        )
+        if deleted.returncode != 0:
+            errors.append(f"branch delete failed: {deleted.stderr.strip() or deleted.stdout.strip()}")
+    if worktree_dir.exists():
+        errors.append(f"worktree still exists: {worktree_dir}")
+    return errors
 
 
 def verify_subagent_worktree(worktree_dir: Path) -> tuple[bool, str]:
@@ -135,7 +168,17 @@ def reconcile_subagent_ticket(
             error=f"No active worktree found for {ticket_id} at {wt_dir}",
         )
 
-    # 2. Pre-landing verification
+    dirty, dirty_output = _worktree_is_dirty(wt_dir)
+    if dirty:
+        return ReconcileResult(
+            status="dirty_worktree",
+            ticket_id=ticket_id,
+            worktree_path=str(wt_dir),
+            branch=branch_name,
+            verification_output=dirty_output,
+            error="Subagent worktree has uncommitted changes. Commit, inspect, or abort it before reconcile; worktree preserved.",
+        )
+
     if not skip_verify:
         passed, msg = verify_subagent_worktree(wt_dir)
         if not passed:
@@ -174,14 +217,20 @@ def reconcile_subagent_ticket(
             error=f"Merge conflict or failure:\n{merge_proc.stderr or merge_proc.stdout}",
         )
 
-    # 5. Teardown multiplexer sessions
-    closed_ws = _close_associated_herdr_workspaces(project_root, ticket_id)
-    closed_tmux = _close_associated_tmux_windows(ticket_id)
-    all_closed = closed_ws + closed_tmux
-
-    # 6. Teardown git worktree and branch
-    subprocess.run(["git", "worktree", "remove", "--force", str(wt_dir)], cwd=str(project_root), capture_output=True, text=True)
-    subprocess.run(["git", "branch", "-D", branch_name], cwd=str(project_root), capture_output=True, text=True)
+    teardown_errors: List[str] = []
+    closed_ws, close_errors = _close_dispatch_resources(project_root, ticket_id)
+    teardown_errors.extend(close_errors)
+    teardown_errors.extend(_remove_worktree_and_branch(project_root, wt_dir, branch_name))
+    if teardown_errors:
+        return ReconcileResult(
+            status="teardown_failed",
+            ticket_id=ticket_id,
+            branch=branch_name,
+            worktree_path=str(wt_dir),
+            error="Merge succeeded, but teardown was incomplete: " + "; ".join(teardown_errors),
+            closed_workspaces=closed_ws,
+        )
+    clear_receipt(project_root, ticket_id)
 
     # 7. Update ticket in spec to done
     spec, ticket_dict = _find_ticket_and_spec(project_root, ticket_id)
@@ -205,7 +254,7 @@ def reconcile_subagent_ticket(
         branch=branch_name,
         worktree_path=str(wt_dir),
         verification_output="Clean verification and merge",
-        closed_workspaces=all_closed,
+        closed_workspaces=closed_ws,
     )
 
 
@@ -217,17 +266,20 @@ def abort_subagent_ticket(
     wt_dir = project_root / ".tenx" / "worktrees" / ticket_id
     branch_name = f"tenx/{ticket_id}"
 
-    # Teardown multiplexer sessions
-    closed_ws = _close_associated_herdr_workspaces(project_root, ticket_id)
-    closed_tmux = _close_associated_tmux_windows(ticket_id)
-    all_closed = closed_ws + closed_tmux
-
-    # Remove worktree if present
-    if wt_dir.exists():
-        subprocess.run(["git", "worktree", "remove", "--force", str(wt_dir)], cwd=str(project_root), capture_output=True, text=True)
-
-    # Remove branch if present
-    subprocess.run(["git", "branch", "-D", branch_name], cwd=str(project_root), capture_output=True, text=True)
+    teardown_errors: List[str] = []
+    closed_ws, close_errors = _close_dispatch_resources(project_root, ticket_id)
+    teardown_errors.extend(close_errors)
+    teardown_errors.extend(_remove_worktree_and_branch(project_root, wt_dir, branch_name, force=True))
+    if teardown_errors:
+        return ReconcileResult(
+            status="teardown_failed",
+            ticket_id=ticket_id,
+            branch=branch_name,
+            worktree_path=str(wt_dir),
+            error="Abort teardown was incomplete: " + "; ".join(teardown_errors),
+            closed_workspaces=closed_ws,
+        )
+    clear_receipt(project_root, ticket_id)
 
     # Log abortion
     append_entry(
@@ -242,5 +294,5 @@ def abort_subagent_ticket(
         ticket_id=ticket_id,
         branch=branch_name,
         worktree_path=str(wt_dir),
-        closed_workspaces=all_closed,
+        closed_workspaces=closed_ws,
     )

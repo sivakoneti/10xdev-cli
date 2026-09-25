@@ -116,7 +116,9 @@ def detect_multiplexer(preference: str = "auto") -> MultiplexerTarget:
     if pref == "none":
         return MultiplexerTarget(name="none", details="multiplexer projection disabled")
 
-    # Check Herdr
+    # Herdr control is valid only from a Herdr-managed caller. A binary or
+    # running server alone is not enough; the global Herdr skill forbids
+    # ambient focus and socket control from outside the session.
     herdr_env = os.environ.get("HERDR_ENV") == "1"
     herdr_session = os.environ.get("HERDR_SESSION")
     herdr_bin = shutil.which("herdr")
@@ -125,54 +127,31 @@ def detect_multiplexer(preference: str = "auto") -> MultiplexerTarget:
         return MultiplexerTarget(
             name="herdr",
             session=herdr_session or "default",
-            is_active=bool(herdr_bin),
-            details=f"herdr binary {'found' if herdr_bin else 'not found'}"
+            is_active=herdr_env and bool(herdr_bin),
+            details=("active Herdr-managed environment" if herdr_env
+                     else "Herdr requested but caller is outside HERDR_ENV=1"),
         )
 
-    # Check tmux
     tmux_env = os.environ.get("TMUX")
     tmux_bin = shutil.which("tmux")
-
     if pref == "tmux":
         return MultiplexerTarget(
             name="tmux",
             session=tmux_env,
             is_active=bool(tmux_bin),
-            details=f"tmux binary {'found' if tmux_bin else 'not found'}"
+            details=f"tmux binary {'found' if tmux_bin else 'not found'}",
         )
 
-    # Auto detection: prefer Herdr if in Herdr, else tmux if in tmux
-    if (herdr_env or herdr_session) and herdr_bin:
+    if herdr_env and herdr_bin:
         return MultiplexerTarget(
             name="herdr",
             session=herdr_session or "default",
             is_active=True,
-            details=f"active Herdr environment (session: {herdr_session or 'default'})"
+            details=f"active Herdr environment (session: {herdr_session or 'default'})",
         )
-
     if tmux_env and tmux_bin:
-        return MultiplexerTarget(
-            name="tmux",
-            session=tmux_env,
-            is_active=True,
-            details="active tmux session"
-        )
-
-    # Fallback to available binaries if active
-    if herdr_bin:
-        # Check if herdr server is running
-        try:
-            res = subprocess.run(["herdr", "status"], capture_output=True, text=True, timeout=2)
-            if res.returncode == 0 and "status: running" in res.stdout:
-                return MultiplexerTarget(
-                    name="herdr",
-                    session="default",
-                    is_active=True,
-                    details="running Herdr server detected"
-                )
-        except Exception:
-            pass
-
+        return MultiplexerTarget(name="tmux", session=tmux_env, is_active=True,
+                                 details="active tmux session")
     return MultiplexerTarget(name="none", details="no active terminal multiplexer detected")
 
 
@@ -207,9 +186,17 @@ def plan_visual_projection(
         if not focus:
             create_args.append("--no-focus")
 
-        # In Herdr, we can start the agent in the new workspace using herdr pane run or direct launch
-        agent_cmd_str = " ".join(f'"{arg}"' if " " in arg else arg for arg in agent_cmd)
-        run_args = ["herdr", "pane", "run", agent_cmd_str]
+        # The live path uses `agent start` after workspace creation. Keep a
+        # syntactically valid template in dry-run output; the returned root
+        # pane ID replaces the placeholder at runtime.
+        kind = {"omp": "omp", "pi": "pi", "codex": "codex"}.get(
+            agent_cmd[0].lower() if agent_cmd else "", agent_cmd[0] if agent_cmd else "unknown"
+        )
+        name = "tenx_" + ticket_id.lower().replace("-", "_")[:24]
+        run_args = [
+            "herdr", "agent", "start", name, "--kind", kind,
+            "--pane", "<root-pane-id>",
+        ]
 
         return ProjectionPlan(
             multiplexer="herdr",
@@ -222,6 +209,7 @@ def plan_visual_projection(
         agent_cmd_str = " ".join(f'"{arg}"' if " " in arg else arg for arg in agent_cmd)
         create_args = [
             "tmux", "new-window",
+            "-P", "-F", "#{window_id}:#{pane_id}",
             "-c", str(worktree_dir),
             "-n", ticket_id,
         ]
@@ -239,55 +227,53 @@ def plan_visual_projection(
     return None
 
 
+@dataclass(frozen=True)
+class SubagentWaitResult:
+    status: str
+    detail: str
+
 def wait_for_subagent_completion(
     multiplexer: str,
     target_id: Optional[str] = None,
     timeout_sec: int = 120,
     check_interval: float = 0.5,
-) -> bool:
-    """Wait reactively for a subagent running in a multiplexer or subprocess to finish.
-    
-    Supports:
-    - Herdr: Checks pane agent_status ("idle", "done") or wait-output trigger.
-    - tmux: Checks if window/pane exists.
-    - None / fallback: Non-blocking sleep polling up to timeout_sec.
-    """
+) -> SubagentWaitResult:
+    """Wait for a worker and distinguish completion from failure states."""
     import time
     mux_norm = multiplexer.lower().strip()
-
-    if mux_norm == "herdr" and target_id:
+    if mux_norm == "none":
+        return SubagentWaitResult("not_applicable", "no visual worker target")
+    if not target_id:
+        return SubagentWaitResult("missing", "visual worker target is missing")
+    if mux_norm == "herdr":
+        deadline = time.time() + timeout_sec
         sock_path = os.environ.get("HERDR_SOCKET_PATH") or str(Path.home() / ".config" / "herdr" / "herdr.sock")
+        seen_active = False
+        while time.time() < deadline:
+            res = _herdr_send_rpc(sock_path, "pane.get", {"pane_id": target_id})
+            if res and isinstance(res.get("result"), dict):
+                status = res["result"].get("pane", {}).get("agent_status")
+                if status in ("working", "blocked"):
+                    seen_active = True
+                if status == "done":
+                    return SubagentWaitResult("completed", "Herdr agent is done")
+                if status == "idle" and seen_active:
+                    return SubagentWaitResult("completed", "Herdr agent returned to idle after activity")
+                if status == "blocked":
+                    return SubagentWaitResult("blocked", "Herdr agent is blocked; inspect agent output")
+            time.sleep(check_interval)
+        return SubagentWaitResult("timeout", f"Herdr worker did not settle after observed activity within {timeout_sec}s")
+    if mux_norm == "tmux":
         deadline = time.time() + timeout_sec
         while time.time() < deadline:
-            if os.path.exists(sock_path):
-                res = _herdr_send_rpc(sock_path, "pane.get", {"pane_id": target_id})
-                if res and isinstance(res.get("result"), dict):
-                    status = res["result"].get("pane", {}).get("agent_status")
-                    if status in ("idle", "done"):
-                        return True
-            else:
-                try:
-                    res_proc = subprocess.run(["herdr", "pane", "get", target_id], capture_output=True, text=True, timeout=3)
-                    if res_proc.returncode == 0:
-                        data = json.loads(res_proc.stdout)
-                        status = data.get("result", {}).get("pane", {}).get("agent_status")
-                        if status in ("idle", "done"):
-                            return True
-                except Exception:
-                    pass
+            proc = subprocess.run(
+                ["tmux", "list-panes", "-t", target_id, "-F", "#{pane_dead}"],
+                capture_output=True, text=True, timeout=2,
+            )
+            if proc.returncode != 0:
+                return SubagentWaitResult("failed", f"tmux target is unavailable: {proc.stderr.strip()}")
+            if proc.stdout.strip() == "1":
+                return SubagentWaitResult("completed", "tmux worker pane exited")
             time.sleep(check_interval)
-        return False
-
-    elif mux_norm == "tmux" and target_id:
-        deadline = time.time() + timeout_sec
-        while time.time() < deadline:
-            try:
-                res_proc = subprocess.run(["tmux", "has-session", "-t", target_id], capture_output=True, text=True, timeout=2)
-                if res_proc.returncode != 0:
-                    return True
-            except Exception:
-                return True
-            time.sleep(check_interval)
-        return False
-
-    return True
+        return SubagentWaitResult("timeout", f"tmux worker did not finish within {timeout_sec}s")
+    return SubagentWaitResult("failed", f"unsupported multiplexer: {multiplexer}")

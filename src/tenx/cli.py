@@ -68,7 +68,7 @@ from .triage import compute_triage, render_triage
 from .locking import LockTimeout, harness_lock
 from .rules import RULE_CATALOG, list_rules_text, rebuild_convention_index, validate
 from .skills import install_skills, list_skills
-from .templates import BODY_TEMPLATES, CODE_ROOT_COMMENT, CONFIG_TEMPLATE, HARNESS_README
+from .templates import BODY_TEMPLATES, CODE_ROOT_COMMENT, CONFIG_TEMPLATE, HARNESS_README, SKILLS
 from .update import run_update
 
 
@@ -998,9 +998,21 @@ def cmd_triage(args: argparse.Namespace) -> int:
 def cmd_skills(args: argparse.Namespace) -> int:
     root = _root_or_die(args.root)
     if args.skills_cmd in ("list", "status"):
+        target = Path(args.target) if args.target else root / ".claude" / "skills"
         print("Bundled skills (install into your agent's skills dir):")
+        stale: list[str] = []
         for name in list_skills():
-            print(f"  {name}")
+            installed = target / name / "SKILL.md"
+            state = "current"
+            if not installed.is_file():
+                state = "missing"
+            elif installed.read_text(encoding="utf-8") != SKILLS[name].lstrip():
+                state = "stale"
+            if state != "current":
+                stale.append(f"{name} ({state})")
+            print(f"  {name}: {state}")
+        if stale:
+            print(f"Skill drift: {', '.join(stale)} — fix: tenx skills install")
         return 0
     if args.skills_cmd == "install":
         target = Path(args.target) if args.target else root / ".claude" / "skills"
@@ -1140,6 +1152,12 @@ def cmd_reconcile(args: argparse.Namespace) -> int:
             "closed_workspaces": res.closed_workspaces,
         }, indent=2))
         return 0 if res.status == "merged" else 1
+
+    if res.status in ("dirty_worktree", "teardown_failed"):
+        print(f"Reconciliation stopped for ticket {res.ticket_id}: {res.error}", file=sys.stderr)
+        if res.worktree_path:
+            print(f"  worktree preserved: {res.worktree_path}", file=sys.stderr)
+        return 1
 
     if res.status == "merged":
         print(f"Successfully reconciled and merged ticket {res.ticket_id} into current branch.")
@@ -1410,9 +1428,20 @@ def _doctor_enforcement(root: Path, cr: Path, harness) -> list[str]:
     if not (cr / ".mcp.json").is_file():
         problems.append(".mcp.json missing — MCP-capable harnesses get no "
                         "tenx tools; fix: `tenx mcp install`")
-    if not (cr / ".claude" / "skills").is_dir():
-        problems.append("bundled skills not installed (.claude/skills); "
-                        "fix: `tenx skills install`")
+    skills_dir = cr / ".claude" / "skills"
+    if not skills_dir.is_dir():
+        problems.append("bundled skills not installed (.claude/skills); fix: `tenx skills install`")
+    else:
+        stale_skills = [
+            name for name in list_skills()
+            if not (skills_dir / name / "SKILL.md").is_file()
+            or (skills_dir / name / "SKILL.md").read_text(encoding="utf-8") != SKILLS[name].lstrip()
+        ]
+        if stale_skills:
+            problems.append(
+                "bundled skill(s) stale or missing: " + ", ".join(stale_skills)
+                + " — fix: `tenx skills install`"
+            )
 
     # -- gate configuration (informational problems: none, just report) ---
     from .gate import COMMIT_GATE_CONFIG_KEY, commit_gate_mode
@@ -1556,6 +1585,9 @@ def cmd_swarm(args: argparse.Namespace) -> int:
         multiplexer=args.multiplexer,
         max_parallel=args.max_parallel,
         auto_reconcile=args.auto_reconcile,
+        thinking=getattr(args, "thinking", None),
+        timeout=getattr(args, "timeout", 600),
+        focus=getattr(args, "focus", False),
     )
 
     if getattr(args, "json", False):
@@ -1839,8 +1871,12 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--multiplexer", default="auto",
                     choices=["auto", "herdr", "tmux", "none"],
                     help="multiplexer adapter to use with --visual (default: auto)")
-    sp.add_argument("--focus", action="store_true",
-                    help="focus the newly created multiplexer workspace/window (default: False/--no-focus)")
+    focus_group = sp.add_mutually_exclusive_group()
+    focus_group.add_argument("--focus", dest="focus", action="store_true",
+                             help="focus the newly created workspace/window")
+    focus_group.add_argument("--no-focus", dest="focus", action="store_false",
+                             help="keep the newly created workspace/window in the background (default)")
+    sp.set_defaults(focus=False)
     sp.add_argument("--dry-run", action="store_true",
                     help="show worktree path and launch command without executing")
     sp.add_argument("--timeout", type=int, default=600,
@@ -1883,6 +1919,15 @@ def build_parser() -> argparse.ArgumentParser:
                     help="multiplexer adapter (default: auto)")
     sp.add_argument("--max-parallel", type=int, default=4,
                     help="maximum concurrent subagents (default: 4)")
+    sp.add_argument("--thinking", default=None,
+                    help="thinking budget or mode for dispatched workers")
+    sp.add_argument("--timeout", type=int, default=600,
+                    help="per-worker timeout in seconds (default: 600)")
+    sp.add_argument("--focus", action="store_true",
+                    help="focus newly projected workers")
+    sp.add_argument("--no-focus", dest="focus", action="store_false",
+                    help="keep workers in the background (default)")
+    sp.set_defaults(focus=False)
     sp.add_argument("--auto-reconcile", action="store_true",
                     help="automatically verify and merge tickets as waves finish")
     sp.add_argument("--dry-run", action="store_true",
@@ -1976,7 +2021,8 @@ def build_parser() -> argparse.ArgumentParser:
 # advisory lock so a fleet of concurrent agents cannot lose or corrupt writes.
 MUTATING_COMMANDS = {"init", "new", "set", "ticket", "log", "archive",
                      "hook", "skills", "sync", "validate", "changelog",
-                     "scan", "reconcile", "merge", "abort"}  # scan --write rewrites conventions/INDEX.md
+                     "scan", "dispatch", "swarm", "reconcile", "merge",
+                     "abort"}  # scan --write rewrites conventions/INDEX.md
 
 
 def _lock_root(args: argparse.Namespace) -> Path | None:

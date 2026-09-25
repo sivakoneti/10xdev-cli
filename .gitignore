@@ -8,6 +8,7 @@ build/
 # tenx runtime lockfile (advisory, never commit)
 .tenx/.lock
 .tenx/worktrees/
+.tenx/dispatch/
 .tenx/memory/
 
 # Private launch kit / drafts

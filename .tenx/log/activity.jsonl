@@ -257,3 +257,24 @@
 {"ts": "2026-09-15T03:59:37+00:00", "type": "progress", "actor": "agent", "message": "feat(cli): wire cmd_dag and cmd_swarm subcommands into cli parser", "ref": "EPC-024"}
 {"ts": "2026-09-15T04:02:15+00:00", "type": "progress", "actor": "agent", "message": "docs(neutrality): remove personal names and podcast attributions from README, DOC-001, and cli", "ref": "EPC-021"}
 {"ts": "2026-09-15T04:09:14+00:00", "type": "progress", "actor": "agent", "message": "docs(community): add maintainers guide, PR checklist template, code of conduct, and launch kit", "ref": "EPC-021"}
+{"ts": "2026-09-25T12:44:09+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-035-T1: created as in_progress", "ref": "SPC-035"}
+{"ts": "2026-09-25T12:44:10+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-035-T2: created as in_progress", "ref": "SPC-035"}
+{"ts": "2026-09-25T12:44:10+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-035-T3: created as in_progress", "ref": "SPC-035"}
+{"ts": "2026-09-25T12:44:10+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-035-T4: created as in_progress", "ref": "SPC-035"}
+{"ts": "2026-09-25T13:01:46+00:00", "type": "progress", "actor": "agent", "message": "Implemented Herdr dispatch lifecycle reliability and full tenx-dispatch skill integration (SPC-035).", "ref": "SPC-035"}
+{"ts": "2026-09-25T13:01:46+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-035-T1: in_progress -> done", "ref": "SPC-035"}
+{"ts": "2026-09-25T13:01:46+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-035-T2: in_progress -> done", "ref": "SPC-035"}
+{"ts": "2026-09-25T13:01:46+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-035-T3: in_progress -> done", "ref": "SPC-035"}
+{"ts": "2026-09-25T13:01:47+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-035-T4: in_progress -> done", "ref": "SPC-035"}
+{"ts": "2026-09-25T13:01:53+00:00", "type": "progress", "actor": "agent", "message": "SPC-035 validation passed: both smoke modes passed, source syntax passed, out-of-session Herdr dispatch rejected, and tenx validate is clean.", "ref": "SPC-035"}
+{"ts": "2026-09-25T13:02:17+00:00", "type": "progress", "actor": "agent", "message": "Review passed for EPC-025: Herdr dispatch skill, launch receipt, lifecycle outcomes, and skill drift checks are covered by passing source and installed smoke suites; human landing remains pending.", "ref": "EPC-025"}
+{"ts": "2026-09-25T13:45:05+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-035-T1: done -> in_progress", "ref": "SPC-035"}
+{"ts": "2026-09-25T13:45:05+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-035-T2: done -> in_progress", "ref": "SPC-035"}
+{"ts": "2026-09-25T13:45:05+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-035-T3: done -> in_progress", "ref": "SPC-035"}
+{"ts": "2026-09-25T13:45:05+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-035-T4: done -> in_progress", "ref": "SPC-035"}
+{"ts": "2026-09-25T14:20:00+00:00", "type": "progress", "actor": "agent", "message": "Implemented receipt-backed dispatch state, dirty-worktree protection, verified teardown, bounded multi-wave swarm, Herdr agent lifecycle checks, MCP DAG/swarm tools, focus flags, adapter validation, and regression coverage (SPC-035).", "ref": "SPC-035"}
+{"ts": "2026-09-25T14:06:12+00:00", "type": "progress", "actor": "agent", "message": "SPC-035 implementation verified: source smoke suite passes, MCP exposes 21 tools, Herdr projection uses agent-start template, dirty worktree preservation and teardown checks are covered.", "ref": "SPC-035"}
+{"ts": "2026-09-25T14:06:18+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-035-T1: in_progress -> done", "ref": "SPC-035"}
+{"ts": "2026-09-25T14:06:18+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-035-T2: in_progress -> done", "ref": "SPC-035"}
+{"ts": "2026-09-25T14:06:18+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-035-T3: in_progress -> done", "ref": "SPC-035"}
+{"ts": "2026-09-25T14:06:19+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-035-T4: in_progress -> done", "ref": "SPC-035"}

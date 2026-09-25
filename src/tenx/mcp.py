@@ -74,7 +74,8 @@ def _tooldefs() -> list[dict[str, Any]]:
     # SPC-023-T11: tools that write `.tenx` state take the same advisory
     # lock as the CLI, so MCP-driven fleets cannot lose or corrupt writes.
     mutating = {C.cmd_ticket, C.cmd_log, C.cmd_validate, C.cmd_scan,
-                C.cmd_changelog}
+                C.cmd_changelog, C.cmd_dispatch, C.cmd_swarm,
+                C.cmd_reconcile, C.cmd_abort}
 
     def mk(func, defaults: dict[str, Any]):
         def handler(args: dict[str, Any]) -> tuple[str, int]:
@@ -246,6 +247,29 @@ def _tooldefs() -> list[dict[str, Any]]:
              "ticket": {**S, "description": "ticket id, e.g. SPC-032-T1"}},
              "required": ["ticket"]},
          "handler": mk(C.cmd_abort, {"json": False})},
+        {"name": "tenx_dag",
+         "description": "Inspect a spec DAG, detect cycles, and show execution waves.",
+         "inputSchema": {"type": "object", "properties": {
+             "spec": {**S, "description": "spec id, e.g. SPC-033"}},
+             "required": ["spec"]},
+         "handler": mk(C.cmd_dag, {"json": False})},
+        {"name": "tenx_swarm",
+         "description": "Schedule bounded wave-based subagent dispatch with optional visual projection and reconciliation.",
+         "inputSchema": {"type": "object", "properties": {
+             "spec": {**S, "description": "spec id, e.g. SPC-033"},
+             "agent": {"type": "string", "description": "worker harness (default pi)"},
+             "model": {"type": "string", "description": "target model"},
+             "thinking": {"type": "string", "description": "thinking level"},
+             "visual": {**B, "description": "project workers visually"},
+             "multiplexer": {"type": "string", "enum": ["auto", "herdr", "tmux", "none"]},
+             "max_parallel": {"type": "integer", "description": "maximum workers per wave"},
+             "auto_reconcile": {**B, "description": "verify and merge completed workers"},
+             "dry_run": {**B, "description": "plan without launching"}},
+             "required": ["spec"]},
+         "handler": mk(C.cmd_swarm, {"agent": "pi", "model": None, "thinking": None,
+                                      "visual": False, "multiplexer": "auto",
+                                      "max_parallel": 4, "auto_reconcile": False,
+                                      "dry_run": False, "json": False})},
         {"name": "tenx_changelog",
          "description": "Docs-sync: manage the Keep-a-Changelog "
                         "CHANGELOG.md. action=show prints it; action=add "
