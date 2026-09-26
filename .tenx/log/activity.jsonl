@@ -281,3 +281,4 @@
 {"ts": "2026-09-25T14:34:16+00:00", "type": "progress", "actor": "agent", "message": "Added repository agent integration rules for RTK command/output guidance.", "ref": "SPC-035"}
 {"ts": "2026-09-26T06:27:32+00:00", "type": "progress", "actor": "agent", "message": "Fixed update fallback branch from master to published main and added regression coverage.", "ref": "SPC-035"}
 {"ts": "2026-09-26T06:28:12+00:00", "type": "progress", "actor": "agent", "message": "Published v0.26.1 with the main-branch update fallback fix and aligned package version metadata.", "ref": "SPC-035"}
+{"ts": "2026-09-26T06:34:24+00:00", "type": "progress", "actor": "agent", "message": "Fixed tenx update checks to target the distribution repository instead of the caller's Git remote; added regression coverage and bumped to v0.26.2.", "ref": "SPC-035"}

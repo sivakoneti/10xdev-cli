@@ -7,9 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.26.1] - 2026-09-25
+## [0.26.2] - 2026-09-25
 
 ### Fixed
+- Fixed the updater to always check the tenx distribution repository instead of the caller's Git remote.
 - Fixed the pre-release update fallback to read `pyproject.toml` from the published `main` branch instead of the obsolete `master` branch.
 
 ## [0.26.0] - 2026-09-25

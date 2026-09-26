@@ -41,23 +41,9 @@ class UpdateError(Exception):
     """Fatal problem with an upgrade attempt (never raised by checks)."""
 
 
-def _detect_git_repo() -> str | None:
-    """If running inside a git repo with a remote, use that remote repository."""
-    try:
-        r = subprocess.run(["git", "config", "--get", "remote.origin.url"], capture_output=True, text=True, timeout=2)
-        if r.returncode == 0 and r.stdout.strip():
-            url = r.stdout.strip()
-            # Match github.com:owner/repo or https://github.com/owner/repo(.git)
-            m = re.search(r"github\.com[:/]([^/]+/[^/\.]+)", url)
-            if m:
-                return m.group(1)
-    except Exception:
-        pass
-    return None
-
-
 def _repo() -> str:
-    return os.environ.get("TENX_UPDATE_REPO") or _detect_git_repo() or DEFAULT_REPO
+    """Return the tenx distribution repository, never the caller's repo."""
+    return os.environ.get("TENX_UPDATE_REPO") or DEFAULT_REPO
 
 
 def _branch() -> str:
