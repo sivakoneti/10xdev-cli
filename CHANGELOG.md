@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Fixed the pre-release update fallback to read `pyproject.toml` from the published `main` branch instead of the obsolete `master` branch.
+
 ## [0.26.0] - 2026-09-25
 
 ### Fixed

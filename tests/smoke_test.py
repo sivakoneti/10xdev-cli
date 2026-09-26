@@ -796,6 +796,9 @@ def main() -> int:
         check("update --json status valid",
               uj["status"] in
               ("up-to-date", "update-available", "check-failed"))
+        from tenx.update import _branch, DEFAULT_BRANCH
+        check("update fallback uses the published main branch",
+              DEFAULT_BRANCH == "main" and _branch() == "main")
         # session-start surfaces tell agents to check for updates
         tenx("hook", "install", "--agent", "all", cwd=scanproj)
         tenx("skills", "install", cwd=scanproj)

@@ -33,7 +33,7 @@ import urllib.request
 from typing import Any
 
 DEFAULT_REPO = os.environ.get("TENX_UPDATE_REPO", "sivakoneti/10xdev-cli")
-DEFAULT_BRANCH = "master"
+DEFAULT_BRANCH = os.environ.get("TENX_UPDATE_BRANCH", "main")
 TIMEOUT = 10
 
 

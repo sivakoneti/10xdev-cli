@@ -279,3 +279,4 @@
 {"ts": "2026-09-25T14:06:18+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-035-T3: in_progress -> done", "ref": "SPC-035"}
 {"ts": "2026-09-25T14:06:19+00:00", "type": "progress", "actor": "agent", "message": "ticket SPC-035-T4: in_progress -> done", "ref": "SPC-035"}
 {"ts": "2026-09-25T14:34:16+00:00", "type": "progress", "actor": "agent", "message": "Added repository agent integration rules for RTK command/output guidance.", "ref": "SPC-035"}
+{"ts": "2026-09-26T06:27:32+00:00", "type": "progress", "actor": "agent", "message": "Fixed update fallback branch from master to published main and added regression coverage.", "ref": "SPC-035"}
