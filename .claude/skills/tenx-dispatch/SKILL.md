@@ -1,6 +1,6 @@
 ---
 name: tenx-dispatch
-description: Dispatch, visually project, supervise, reconcile, or abort tenx spec-ticket workers in isolated git worktrees. Use whenever a tenx-governed request mentions `tenx ticket-brief`, `tenx dispatch`, `tenx reconcile`/`merge`, `tenx abort`, `tenx dag`/`tenx swarm`, delegated spec tickets, parallel ticket workers, isolated worker branches, landing worker changes, or an explicitly requested Herdr-visible ticket worker. Do not use for ordinary in-session coding, generic non-ticket subagent tasks, or plain Herdr control that does not involve a tenx ticket/worktree.
+description: Delegate a tenx spec ticket to an isolated worker in a git worktree, then project, supervise, reconcile, or abort it. Use proactively whenever a tenx-governed project has ticket-shaped work: a spec with open tickets, `tenx next` reporting a ready or implementable ticket, a multi-ticket spec where isolation would keep test output and exploration out of this session, or any mention of `tenx ticket-brief`, `tenx dispatch`, `tenx reconcile`/`merge`, `tenx abort`, `tenx dag`/`tenx swarm`, delegated spec tickets, parallel ticket workers, isolated worker branches, landing worker changes, or a Herdr-visible ticket worker. Delegation is a routing decision: prefer an isolated worker for a wide ticket, several ready tickets, or anything likely to produce large test logs, and implement in band only for quick targeted changes. Do not use for generic non-ticket subagent tasks or plain Herdr control that does not involve a tenx ticket/worktree.
 ---
 
 # Subagent Ticket Dispatch
@@ -15,17 +15,24 @@ evidence, and landing.
 2. Inspect the exact dry-run command and model route. Do not launch an
    adapter that requests approval, sandbox, filesystem, network, or
    credential bypass unless the user explicitly approved that exact scope.
-3. If Herdr is involved, read `skill://herdr` first. Herdr is an explicit
-   control surface, not a substitute for the tenx ticket/worktree contract.
+3. If Herdr is involved, read `skill://herdr` first when it is available. Herdr
+   is an explicit control surface, not a substitute for the tenx
+   ticket/worktree contract. Do not block on that skill being routed: the
+   supervision commands you need are listed inline below.
 
 ## Dispatch modes
 
 ### Herdr-managed visual dispatch
 
-Use only when the user explicitly requests Herdr projection/control. Herdr
-requires `HERDR_ENV=1`; if the check fails, stop and report that the command
-must run from a Herdr-managed pane. Read `herdr --help` and the relevant
-command groups instead of running bare `herdr` for discovery.
+Use when Herdr projection is requested or configured (`dispatch.visual` in
+`.tenx/config.yaml`, or `TENX_DISPATCH_VISUAL=1`). Herdr requires
+`HERDR_ENV=1`; if the check fails, stop and report that the command must run
+from a Herdr-managed pane. `tenx dispatch --visual` fails loudly rather than
+downgrading to a headless worker, so a silent invisible run is a bug, not a
+configuration to work around.
+
+Read `herdr --help` and the relevant command groups instead of running bare
+`herdr` for discovery; bare `herdr` launches or attaches the TUI.
 
 The dispatch engine creates the isolated worktree, then uses Herdr's agent
 surface with the returned workspace and pane IDs. The supervisor must retain
@@ -43,9 +50,21 @@ the full lifecycle:
    approval. On failure or abandonment, use `tenx abort <TICKET-ID>` and
    preserve the receipt.
 
-Use stable IDs from JSON. Use `--no-focus` for background work. Do not infer
+The receipt from `tenx dispatch` carries `workspace_id`, `pane_id`, and
+`agent_name`; those are the stable handles for the lifecycle above. Inspect
+them with the supervisor commands directly when the herdr skill has not been
+loaded:
+
+```bash
+herdr agent get <agent_name>
+herdr agent read <agent_name> --source recent-unwrapped --lines 120
+herdr agent wait <agent_name> --until blocked --timeout 120000
+```
+
+Read those outputs before answering a blocked agent, and never derive
 completion from a missing target, an unparsed response, or a command that was
-merely submitted.
+merely submitted. Use stable IDs from JSON. Use `--no-focus` for background
+work.
 
 ### Headless dispatch
 
