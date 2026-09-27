@@ -56,6 +56,7 @@ from .artifacts import (
 )
 from .context import build_context, render_markdown
 from .execbrief import build_exec_brief
+from .install_health import in_dispatch_worktree, recovery_instructions, tenx_source_path
 from .dispatch import build_ticket_brief, dispatch_ticket, resolve_dispatch_prefs
 from .discovery import (TENXLINK, code_root, env_project_root,
                         find_project_root, harness_root, is_initialized)
@@ -1136,6 +1137,17 @@ def cmd_dispatch(args: argparse.Namespace) -> int:
     return 1
 
 
+def _print_host_install_warning(warning: dict[str, str] | None) -> None:
+    """Report a host tenx install a dispatched worker re-pointed (SPC-038)."""
+    if not warning:
+        return
+    print("", file=sys.stderr)
+    print(f"WARNING: host tenx install damaged: {warning['problem']}", file=sys.stderr)
+    print(f"  cause: {warning['cause']}", file=sys.stderr)
+    print("  restore it with:", file=sys.stderr)
+    print(warning["recovery"], file=sys.stderr)
+
+
 def cmd_reconcile(args: argparse.Namespace) -> int:
     """Reconcile, verify, merge, and teardown a completed subagent ticket."""
     from .reconcile import reconcile_subagent_ticket
@@ -1155,6 +1167,7 @@ def cmd_reconcile(args: argparse.Namespace) -> int:
             "verification_output": res.verification_output,
             "error": res.error,
             "closed_workspaces": res.closed_workspaces,
+            "host_install_warning": res.host_install_warning,
         }, indent=2))
         return 0 if res.status == "merged" else 1
 
@@ -1172,6 +1185,7 @@ def cmd_reconcile(args: argparse.Namespace) -> int:
         print(f"  worktree:   {res.worktree_path} (removed)")
         if res.closed_workspaces:
             print(f"  multiplexer: closed {len(res.closed_workspaces)} workspace(s)/window(s)")
+        _print_host_install_warning(res.host_install_warning)
         return 0
 
     if res.status == "verified_failed":
@@ -1205,12 +1219,14 @@ def cmd_abort(args: argparse.Namespace) -> int:
             "branch": res.branch,
             "worktree_path": res.worktree_path,
             "closed_workspaces": res.closed_workspaces,
+            "host_install_warning": res.host_install_warning,
         }, indent=2))
         return 0
 
     print(f"Aborted subagent worktree and session for {res.ticket_id}.")
     if res.closed_workspaces:
         print(f"  multiplexer: closed {len(res.closed_workspaces)} workspace(s)/window(s)")
+    _print_host_install_warning(res.host_install_warning)
     return 0
 
 
@@ -1298,6 +1314,13 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         "yaml_backend": backend,
     }
     problems: list[str] = []
+    install_source = tenx_source_path()
+    if in_dispatch_worktree(install_source):
+        problems.append(
+            f"tenx resolves inside a dispatch worktree: {install_source} — "
+            "a worker installed from its worktree; that path disappears at "
+            "teardown and leaves the CLI unimportable. Restore with:\n"
+            + recovery_instructions())
     if initialized:
         harness = load_harness(root)
         cr = code_root(root, harness.config)

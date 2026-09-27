@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 from tenx.activity import append_entry
 from tenx.artifacts import load_harness, update_meta, Artifact
 from tenx.multiplexers import _herdr_send_rpc
+from tenx.install_health import check_host_install
 from tenx.subagent_state import clear_receipt, read_receipt
 
 
@@ -23,6 +24,9 @@ class ReconcileResult:
     verification_output: Optional[str] = None
     error: Optional[str] = None
     closed_workspaces: Optional[List[str]] = None
+    # Set when teardown removed a worktree that a worker had re-pointed the
+    # host tenx install at; the merge itself still counts as landed.
+    host_install_warning: Optional[Dict[str, str]] = None
 
 
 def _find_ticket_and_spec(project_root: Path, ticket_id: str) -> tuple[Optional[Artifact], Optional[Dict[str, Any]]]:
@@ -230,6 +234,10 @@ def reconcile_subagent_ticket(
             error="Merge succeeded, but teardown was incomplete: " + "; ".join(teardown_errors),
             closed_workspaces=closed_ws,
         )
+    # A worker may have re-pointed the host tenx install at this worktree; the
+    # worktree is gone now, so compare the host install before dropping the
+    # receipt that recorded what it looked like (SPC-038).
+    host_warning = check_host_install(read_receipt(project_root, ticket_id).get("host_install"))
     clear_receipt(project_root, ticket_id)
 
     # 7. Update ticket in spec to done
@@ -255,6 +263,7 @@ def reconcile_subagent_ticket(
         worktree_path=str(wt_dir),
         verification_output="Clean verification and merge",
         closed_workspaces=closed_ws,
+        host_install_warning=host_warning,
     )
 
 
@@ -279,6 +288,7 @@ def abort_subagent_ticket(
             error="Abort teardown was incomplete: " + "; ".join(teardown_errors),
             closed_workspaces=closed_ws,
         )
+    host_warning = check_host_install(read_receipt(project_root, ticket_id).get("host_install"))
     clear_receipt(project_root, ticket_id)
 
     # Log abortion
@@ -295,4 +305,5 @@ def abort_subagent_ticket(
         branch=branch_name,
         worktree_path=str(wt_dir),
         closed_workspaces=closed_ws,
+        host_install_warning=host_warning,
     )

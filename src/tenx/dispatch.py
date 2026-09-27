@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from .artifacts import Harness, load_harness
+from .install_health import snapshot_host_install
 from .discovery import code_root
 from .multiplexers import (
     MultiplexerTarget,
@@ -59,6 +60,19 @@ progress before completion.
    `tenx log "Implemented {ticket_id}: <summary>" --ref {spec_id}`
 4. Run `tenx validate`: it MUST pass with 0 errors before declaring done.
 5. Exit cleanly when complete.
+
+## Host environment — do not touch
+This worktree is deleted when the ticket is landed or aborted. Any install
+that points at it (an editable install, a `.pth` file, a `uv tool install`
+run from this directory) keeps pointing at a path that no longer exists and
+breaks the operator's `tenx` command.
+- Forbidden: `uv tool install`, `uv tool upgrade`, `pip install`,
+  `pipx install`, or anything else that writes to a site-packages,
+  virtualenv, or tool directory outside this worktree.
+- Verify with this worktree's own code instead: `python3 -m tenx <command>`
+  and `python3 tests/smoke_test.py --module`, both from this directory.
+- If a genuine global install seems required, stop and say so in your final
+  message. Do not perform it.
 """
 
 
@@ -638,6 +652,16 @@ def dispatch_ticket(
             "error": "Herdr visual dispatch requires HERDR_ENV=1 and an active Herdr CLI; read skill://herdr and run from a Herdr-managed pane",
         }
 
+    # One snapshot of the host install for every receipt on this dispatch:
+    # a worker that installs from the worktree re-points the operator's CLI,
+    # and teardown compares against this to detect it (SPC-038).
+    host_install = snapshot_host_install()
+
+    def record(receipt: dict[str, Any]) -> dict[str, Any]:
+        receipt.setdefault("host_install", host_install)
+        record(receipt)
+        return receipt
+
     # Setup worktree
     try:
         wt_dir = setup_worktree(project_root, ticket_id)
@@ -707,7 +731,7 @@ def dispatch_ticket(
                     "agent": agent_cmd.agent,
                     "brief_path": str(wt_brief),
                 }
-                write_receipt(project_root, ticket_id, receipt)
+                record(receipt)
                 started = _start_herdr_agent(
                     brief_path=wt_brief,
                     ticket_id=ticket_id,
@@ -720,14 +744,14 @@ def dispatch_ticket(
                 )
                 if not started["ok"]:
                     receipt.update({"status": "error", "error": started["error"], "agent_name": started.get("agent_name")})
-                    write_receipt(project_root, ticket_id, receipt)
+                    record(receipt)
                     return {**receipt, "stderr": started["error"]}
                 receipt.update({
                     "status": "completed" if started.get("agent_status") in ("idle", "done") else "dispatched",
                     "agent_name": started["agent_name"],
                     "agent_status": started.get("agent_status"),
                 })
-                write_receipt(project_root, ticket_id, receipt)
+                record(receipt)
                 return {
                     **receipt,
                     "visual": True,
@@ -756,7 +780,7 @@ def dispatch_ticket(
                     "visual": True,
                     "projection_summary": projection.summary,
                 }
-                write_receipt(project_root, ticket_id, receipt)
+                record(receipt)
                 return receipt
         except Exception as exc:
             return fail(
@@ -786,7 +810,7 @@ def dispatch_ticket(
             "stdout": proc.stdout[-2000:] if proc.stdout else "",
             "stderr": proc.stderr[-2000:] if proc.stderr else "",
         }
-        write_receipt(project_root, ticket_id, receipt)
+        record(receipt)
         return receipt
     except subprocess.TimeoutExpired:
         receipt = {
@@ -800,7 +824,7 @@ def dispatch_ticket(
             "brief_path": str(wt_brief),
             "error": f"Execution timed out after {timeout} seconds",
         }
-        write_receipt(project_root, ticket_id, receipt)
+        record(receipt)
         return receipt
     except Exception as exc:
         receipt = {
@@ -814,5 +838,5 @@ def dispatch_ticket(
             "brief_path": str(wt_brief),
             "error": str(exc),
         }
-        write_receipt(project_root, ticket_id, receipt)
+        record(receipt)
         return receipt

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.3] - 2026-09-27
+
+### Added
+- Kept a dispatched worker from hijacking the host tool install. The ticket brief now forbids package-manager installs and names the worktree-local verification path (`python3 -m tenx`, `python3 tests/smoke_test.py --module`). Every dispatch receipt records the host install's resolved source, and `tenx reconcile`/`tenx abort` verify the installed `tenx` command after teardown — reporting a worker's re-pointing with the recovery command instead of leaving the operator with a CLI that cannot start. `tenx doctor` reports a worktree-scoped install source. (SPC-038)
+
 ## [0.27.2] - 2026-09-27
 
 ### Added

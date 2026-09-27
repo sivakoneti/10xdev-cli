@@ -838,6 +838,79 @@ def main() -> int:
                   upd._uv_tool_package() is None and upd.detect_installer() is None)
         finally:
             upd.subprocess.run, upd.shutil.which = real_run, real_which
+
+        # ---- SPC-038: a dispatched worker must not hijack the host install ----
+        from tenx.install_health import (
+            check_host_install,
+            in_dispatch_worktree,
+            recovery_instructions,
+            snapshot_host_install,
+        )
+        from tenx.dispatch import TICKET_BRIEF_TEMPLATE
+
+        check("SPC-038 T1: brief forbids host-environment installs",
+              "uv tool install" in TICKET_BRIEF_TEMPLATE
+              and "pip install" in TICKET_BRIEF_TEMPLATE
+              and "Host environment" in TICKET_BRIEF_TEMPLATE)
+        check("SPC-038 T1: brief names the worktree-local verification path",
+              "python3 -m tenx" in TICKET_BRIEF_TEMPLATE
+              and "--module" in TICKET_BRIEF_TEMPLATE)
+
+        snap = snapshot_host_install()
+        check("SPC-038 T2: host install snapshot records the resolved source",
+              isinstance(snap.get("tenx_source"), str) and snap["tenx_source"].endswith("__init__.py"))
+        check("SPC-038 T2: a matching install reports nothing",
+              check_host_install(snap) is None)
+        check("SPC-038 T2: a receipt without a snapshot is not an error",
+              check_host_install(None) is None and check_host_install({}) is None)
+        dead = check_host_install({"tenx_source": "/gone/.tenx/worktrees/SPC-001-T1/src/tenx/__init__.py"})
+        check("SPC-038 T3: a removed worktree install is reported",
+              dead is not None and "no longer exists" in dead["problem"])
+        check("SPC-038 T3: the report names the recovery command",
+              dead is not None and "uv tool install --force" in dead["recovery"]
+              and "pipx install --force" in dead["recovery"])
+        check("SPC-038 T4: worktree-scoped source is detected",
+              in_dispatch_worktree("/repo/.tenx/worktrees/SPC-001-T1/src/tenx/cli.py")
+              and not in_dispatch_worktree("/usr/lib/python3/site-packages/tenx/cli.py")
+              and not in_dispatch_worktree(None))
+        check("SPC-038 T4: recovery instructions name both installers",
+              "uv tool install" in recovery_instructions()
+              and "pipx install" in recovery_instructions())
+
+        # The teardown result must carry the warning without failing the merge.
+        import dataclasses
+        from tenx.reconcile import ReconcileResult
+        res = ReconcileResult(status="merged", ticket_id="SPC-001-T1",
+                              host_install_warning=dead)
+        check("SPC-038 T3: a damaged host install does not unmerge the ticket",
+              dataclasses.asdict(res)["status"] == "merged"
+              and dataclasses.asdict(res)["host_install_warning"]["problem"] == dead["problem"])
+
+        # The snapshot only sees this interpreter; the damage lands on
+        # whichever one backs the installed CLI, so teardown asks that
+        # command directly whether the operator can still run tenx.
+        from tenx.install_health import probe_installed_cli
+
+        class _Proc:
+            def __init__(self, rc, err="", out=""):
+                self.returncode, self.stderr, self.stdout = rc, err, out
+
+        healthy = probe_installed_cli(which=lambda n: "/usr/bin/tenx",
+                                      run=lambda *a, **k: _Proc(0, "", "tenx 0.27.2"))
+        check("SPC-038 T3: a working tenx command reports nothing",
+              healthy is None)
+        broken = probe_installed_cli(
+            which=lambda n: "/usr/bin/tenx",
+            run=lambda *a, **k: _Proc(1, "ModuleNotFoundError: No module named 'tenx'"))
+        check("SPC-038 T3: an unstartable tenx command is reported",
+              broken is not None and "no longer starts" in broken["problem"])
+        check("SPC-038 T3: the report carries the interpreter's own error",
+              broken is not None and "No module named" in broken["cause"])
+        check("SPC-038 T3: the report names the recovery command",
+              broken is not None and "uv tool install --force" in broken["recovery"])
+        check("SPC-038 T3: a missing tenx command is not a failure",
+              probe_installed_cli(which=lambda n: None, run=lambda *a, **k: _Proc(0)) is None)
+
         # session-start surfaces tell agents to check for updates
         tenx("hook", "install", "--agent", "all", cwd=scanproj)
         tenx("skills", "install", cwd=scanproj)
