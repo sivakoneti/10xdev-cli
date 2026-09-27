@@ -85,9 +85,16 @@ CAPABILITIES: list[dict[str, str]] = [
              "requirements, conventions, and test instructions.",
      "when": "Delegating work to a subagent or tackling a ticket in isolation."},
     {"name": "dispatch", "surface": "both", "group": "track",
-     "usage": "tenx dispatch <SPEC-ID> <TICKET-ID> [--agent A] [--dry-run]",
+     "usage": "tenx dispatch <SPEC-ID> <TICKET-ID> [--agent A] [--model M] "
+              "[--thinking T] [--visual|--no-visual] "
+              "[--multiplexer auto|herdr|tmux|none] [--focus|--no-focus] "
+              "[--timeout S] [--dry-run] [--json]",
      "what": "Dispatch a ticket to an isolated worker running in a git worktree.",
-     "when": "Offloading a ticket to an isolated subagent to preserve main context."},
+     "when": "Offloading a ticket to an isolated subagent to preserve main "
+             "context. Delegation is surfaced automatically by `tenx next`. "
+             "The `dispatch` config section in .tenx/config.yaml "
+             "(dispatch.visual) plus TENX_DISPATCH_VISUAL can make visual "
+             "projection the default, overridable per call with --no-visual."},
     {"name": "reconcile", "surface": "both", "group": "track",
      "usage": "tenx reconcile <TICKET-ID> [--skip-verify] [--json]",
      "what": "Verify, merge, and clean up completed subagent work from its worktree into the parent branch.",
@@ -105,9 +112,17 @@ CAPABILITIES: list[dict[str, str]] = [
      "what": "Visualize the dependency graph, cycles, and execution waves for a spec's tickets.",
      "when": "Before starting or scheduling multi-ticket execution in a complex spec."},
     {"name": "swarm", "surface": "both", "group": "track",
-     "usage": "tenx swarm <SPEC-ID> [--visual] [--max-parallel N] [--auto-reconcile] [--dry-run] [--json]",
+     "usage": "tenx swarm <SPEC-ID> [--agent A] [--model M] [--thinking T] "
+              "[--visual|--no-visual] [--multiplexer auto|herdr|tmux|none] "
+              "[--focus|--no-focus] [--max-parallel N] [--timeout S] "
+              "[--auto-reconcile] [--dry-run] [--json]",
      "what": "Schedule and coordinate parallel wave-based execution of independent spec tickets across multiplexers.",
-     "when": "Autonomously executing specs with multiple dependent tickets across parallel subagents."},
+     "when": "Autonomously executing specs with multiple dependent tickets "
+             "across parallel subagents. Delegation is surfaced automatically "
+             "by `tenx next`. The `dispatch` config section in "
+             ".tenx/config.yaml (dispatch.visual) plus TENX_DISPATCH_VISUAL "
+             "can make visual projection the default, overridable per call "
+             "with --no-visual."},
     # ------------------------------------------------------------- track
     {"name": "next", "surface": "both", "group": "track",
      "usage": "tenx next [--json]",
