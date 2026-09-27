@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Re-pinned the SPC-035 `--no-focus` smoke check, which encoded the silent-headless-downgrade contract SPC-036 removed: it asked for `--visual` with auto-detection and expected success, which only held on a machine that already had a multiplexer and failed CI on a clean runner. The check now pins what `--no-focus` actually controls — the projection plan — and adds the `--focus` counterpart. (SPC-036)
+- Re-pinned the SPC-035 `--no-focus` smoke check, which encoded the silent-headless-downgrade contract SPC-036 removed: it asked for `--visual` with auto-detection and expected success, which only held on a machine that already had a multiplexer and failed CI on a clean runner. The check now pins what `--no-focus` actually controls — the projection plan — and adds the `--focus` counterpart. (SPC-036)
+
 ## [0.27.0] - 2026-09-27
 
 ### Added

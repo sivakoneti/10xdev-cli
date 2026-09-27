@@ -1878,9 +1878,23 @@ def main() -> int:
             check("SPC-035 T3: Herdr dry-run uses agent start template",
                   "agent" in dr_vh_j.get("projection", {}).get("run_cmd", []) and
                   "--pane" in dr_vh_j.get("projection", {}).get("run_cmd", []))
-            no_focus = tenx("dispatch", "SPC-001", "SPC-001-T1", "--visual", "--no-focus", "--dry-run", "--json", cwd=dproj)
-            check("SPC-035 T3: --no-focus is accepted",
-                  "--no-focus" in no_focus.stdout)
+            # --no-focus is a claim about the projection plan, so pin it where
+            # a plan exists. The previous form asked for --visual with
+            # auto-detection and expected success, which only held on a machine
+            # that already had a multiplexer — that is exactly the silent
+            # headless downgrade SPC-036 fixed, so the old expectation is not
+            # preserved here.
+            no_focus = json.loads(tenx("dispatch", "SPC-001", "SPC-001-T1", "--visual",
+                                       "--multiplexer", "herdr", "--no-focus",
+                                       "--dry-run", "--json", cwd=dproj).stdout)
+            check("SPC-035 T3: --no-focus reaches the projection plan",
+                  "--no-focus" in no_focus.get("projection", {}).get("create_cmd", []),
+                  str(no_focus.get("projection")))
+            focus = json.loads(tenx("dispatch", "SPC-001", "SPC-001-T1", "--visual",
+                                    "--multiplexer", "herdr", "--focus",
+                                    "--dry-run", "--json", cwd=dproj).stdout)
+            check("SPC-035 T3: --focus drops --no-focus from the plan",
+                  "--no-focus" not in focus.get("projection", {}).get("create_cmd", []))
             check("SPC-035 T3: missing adapter fails closed",
                   tenx("dispatch", "SPC-001", "SPC-001-T1", "--agent", "definitely-missing", "--dry-run", "--json", cwd=dproj, expect_rc=1).stdout.find("not found") >= 0)
 
