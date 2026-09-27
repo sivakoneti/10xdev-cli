@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Added proactive delegation routing: tenx next now names the runnable isolated-worker command for every spec with ready tickets, the tenx exec brief prints the same commands, and the bundled tenx-dispatch skill routes on ticket-shaped intent instead of suppressing itself. Added a dispatch section to .tenx/config.yaml (agent, visual) with TENX_DISPATCH_VISUAL override and --no-visual, defaulting to headless. tenx dispatch --visual now fails loudly when no multiplexer is available instead of silently running an invisible headless worker, and a failed launch no longer leaves a worktree or branch behind. (SPC-036)
+- Fixed frontmatter portability: PyYAML wrapped long titles at ~80 columns, producing continuation lines the fallback parser could not read, so artifacts written on a PyYAML machine failed tenx validate on every install without it. The writer now emits unwrapped scalars and the round-trip is pinned by tests. (SPC-036)
+
 ## [0.26.2] - 2026-09-25
 
 ### Fixed

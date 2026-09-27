@@ -56,7 +56,7 @@ from .artifacts import (
 )
 from .context import build_context, render_markdown
 from .execbrief import build_exec_brief
-from .dispatch import build_ticket_brief, dispatch_ticket
+from .dispatch import build_ticket_brief, dispatch_ticket, resolve_dispatch_prefs
 from .discovery import (TENXLINK, code_root, env_project_root,
                         find_project_root, harness_root, is_initialized)
 from .adapters import adapter_ids, detect_adapters
@@ -1077,16 +1077,21 @@ def cmd_dispatch(args: argparse.Namespace) -> int:
     """Dispatch a ticket to an isolated worker in a git worktree."""
     root = _root_or_die(args.root)
     _require_init(root)
+    agent, visual = resolve_dispatch_prefs(
+        load_harness(root).config,
+        cli_agent=getattr(args, "agent", None),
+        cli_visual=getattr(args, "visual", None),
+    )
     res = dispatch_ticket(
         project_root=root,
         spec_id=args.spec.upper(),
         ticket_id=args.ticket,
-        agent=args.agent,
+        agent=agent,
         model=getattr(args, "model", None),
         thinking=getattr(args, "thinking", None),
         dry_run=args.dry_run,
         timeout=args.timeout,
-        visual=getattr(args, "visual", False),
+        visual=visual,
         multiplexer=getattr(args, "multiplexer", "auto"),
         focus=getattr(args, "focus", False),
     )
@@ -1557,8 +1562,13 @@ def cmd_swarm(args: argparse.Namespace) -> int:
         print(f"tenx: unknown spec {args.spec}", file=sys.stderr)
         return 2
 
+    agent, visual = resolve_dispatch_prefs(
+        harness.config,
+        cli_agent=getattr(args, "agent", None),
+        cli_visual=getattr(args, "visual", None),
+    )
     if args.dry_run:
-        plan = plan_spec_swarm(root, spec.id, agent=args.agent, model=args.model)
+        plan = plan_spec_swarm(root, spec.id, agent=agent, model=args.model)
         if getattr(args, "json", False):
             print(json.dumps({
                 "spec_id": plan.spec_id,
@@ -1579,9 +1589,9 @@ def cmd_swarm(args: argparse.Namespace) -> int:
     res = execute_spec_swarm(
         project_root=root,
         spec_id=spec.id,
-        agent=args.agent,
+        agent=agent,
         model=args.model,
-        visual=args.visual,
+        visual=visual,
         multiplexer=args.multiplexer,
         max_parallel=args.max_parallel,
         auto_reconcile=args.auto_reconcile,
@@ -1860,14 +1870,18 @@ def build_parser() -> argparse.ArgumentParser:
                         help="dispatch a ticket to an isolated worker in a git worktree")
     sp.add_argument("spec", help="spec ID, e.g. SPC-001")
     sp.add_argument("ticket", help="ticket ID, e.g. SPC-001-T1")
-    sp.add_argument("--agent", default="pi",
-                    help="agent harness to execute (pi, omp, prime, codex; default: pi)")
+    sp.add_argument("--agent", default=None,
+                    help="agent harness to execute (pi, omp, prime, codex); "
+                         "default: dispatch.agent in config.yaml, else pi")
     sp.add_argument("--model", default=None,
                     help="target model (e.g. google-antigravity/gemini-3.8-flash-high; dynamically routed via Bifrost)")
     sp.add_argument("--thinking", default=None,
                     help="thinking budget or mode (e.g. high, medium, low, off)")
-    sp.add_argument("--visual", action="store_true",
-                    help="project subagent visually into active terminal multiplexer (Herdr workspace, tmux window)")
+    visual_group = sp.add_mutually_exclusive_group()
+    visual_group.add_argument("--visual", dest="visual", action="store_true",
+                              help="project subagent visually into the active terminal multiplexer (Herdr workspace, tmux window)")
+    visual_group.add_argument("--no-visual", dest="visual", action="store_false",
+                              help="force a headless worker, ignoring the dispatch.visual config default")
     sp.add_argument("--multiplexer", default="auto",
                     choices=["auto", "herdr", "tmux", "none"],
                     help="multiplexer adapter to use with --visual (default: auto)")
@@ -1877,6 +1891,7 @@ def build_parser() -> argparse.ArgumentParser:
     focus_group.add_argument("--no-focus", dest="focus", action="store_false",
                              help="keep the newly created workspace/window in the background (default)")
     sp.set_defaults(focus=False)
+    sp.set_defaults(visual=None)
     sp.add_argument("--dry-run", action="store_true",
                     help="show worktree path and launch command without executing")
     sp.add_argument("--timeout", type=int, default=600,
@@ -1908,12 +1923,16 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("swarm",
                         help="schedule and coordinate wave-based parallel ticket execution")
     sp.add_argument("spec", help="spec ID, e.g. SPC-033")
-    sp.add_argument("--agent", default="pi",
-                    help="agent harness (pi, omp, prime, codex; default: pi)")
+    sp.add_argument("--agent", default=None,
+                    help="agent harness (pi, omp, prime, codex); default: "
+                         "dispatch.agent in config.yaml, else pi")
     sp.add_argument("--model", default=None,
                     help="target model (dynamically routed via local Bifrost)")
-    sp.add_argument("--visual", action="store_true",
-                    help="project subagents visually into active terminal multiplexer")
+    visual_group = sp.add_mutually_exclusive_group()
+    visual_group.add_argument("--visual", dest="visual", action="store_true",
+                              help="project subagents visually into the active terminal multiplexer")
+    visual_group.add_argument("--no-visual", dest="visual", action="store_false",
+                              help="force headless workers, ignoring the dispatch.visual config default")
     sp.add_argument("--multiplexer", default="auto",
                     choices=["auto", "herdr", "tmux", "none"],
                     help="multiplexer adapter (default: auto)")
@@ -1928,6 +1947,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--no-focus", dest="focus", action="store_false",
                     help="keep workers in the background (default)")
     sp.set_defaults(focus=False)
+    sp.set_defaults(visual=None)
     sp.add_argument("--auto-reconcile", action="store_true",
                     help="automatically verify and merge tickets as waves finish")
     sp.add_argument("--dry-run", action="store_true",

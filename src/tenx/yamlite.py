@@ -244,7 +244,12 @@ def load_frontmatter(text: str) -> tuple[dict[str, Any] | None, str, str | None]
 def dump_frontmatter(meta: dict[str, Any]) -> str:
     """Serialize metadata back to YAML (subset writer, stable key order)."""
     if _pyyaml is not None:
-        return _pyyaml.safe_dump(meta, sort_keys=False, default_flow_style=False, allow_unicode=True).rstrip()
+        # width=inf: PyYAML wraps long plain scalars at ~80 columns, and the
+        # wrapped continuation lines are unreadable by the fallback parser
+        # below. Since PyYAML is an optional accelerator (CON-002), anything
+        # written here must round-trip through the parser that has no help.
+        return _pyyaml.safe_dump(meta, sort_keys=False, default_flow_style=False,
+                                 allow_unicode=True, width=float("inf")).rstrip()
     lines: list[str] = []
     for key, val in meta.items():
         if val is None:

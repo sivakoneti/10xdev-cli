@@ -28,6 +28,7 @@ ticket by ticket, and write back every state change to the harness.
 1. The spec above — the ticket list is your work queue.
 2. Referenced conventions under `{harness_root}/conventions/` — follow them.
 3. The parent epic (if listed) — for intent and scope.
+{delegation_block}
 
 ## Work loop (repeat per ticket, in order)
 1. Implement the ticket in the code repo. Follow the spec and conventions.
@@ -83,12 +84,56 @@ def build_exec_brief(harness: Harness, spec, project_root) -> str:
     else:
         ticket_lines = "- (no tickets declared — add them with " \
                        "`tenx ticket <SPEC> <TICKET> todo` first)"
+
+
+def _delegation_block(spec_id: str, open_tickets: list[str]) -> str:
+    """Name the isolated-worker commands when the spec is worth delegating.
+
+    A single-ticket spec is cheaper to implement in band, so no delegation is
+    offered for it. Returns a leading newline so the template stays readable
+    when there is nothing to say.
+    """
+    if len(open_tickets) < 2:
+        return ""
+    return "\n" + "\n".join([
+        "## Isolated workers (optional, recommended for wide tickets)",
+        "",
+        "Each ticket can run in its own git worktree on its own agent, so test",
+        "output and exploratory work stay out of this session. Land results",
+        "with `tenx reconcile <TICKET-ID>` only after reviewing the diff.",
+        "",
+        f"- one ticket: `tenx dispatch {spec_id} {open_tickets[0]} --visual`",
+        f"- independent tickets in parallel: `tenx swarm {spec_id} --visual "
+        "--dry-run` to inspect the waves, then drop `--dry-run` to run them",
+        "",
+    ])
+
+
+def build_exec_brief(harness: Harness, spec, project_root) -> str:
+    cfg = harness.config or {}
+    cr = code_root(project_root, cfg)
+    epic_line = ""
+    if spec.meta.get("epic"):
+        epic_line = f"- Parent epic: `{spec.meta['epic']}`\n"
+    tickets = spec.tickets
+    if tickets:
+        ticket_lines = "\n".join(
+            f"- {t.get('id', '?')}: {t.get('status', 'todo')}"
+            + (f" — {t['title']}" if t.get("title") else "")
+            for t in tickets)
+    else:
+        ticket_lines = "- (no tickets declared — add them with " \
+                       "`tenx ticket <SPEC> <TICKET> todo` first)"
+    spec_id = spec.meta.get("id", "?")
+    open_ids = [str(t.get("id")) for t in tickets
+                if t.get("id") and str(t.get("status")) in ("todo", "in_progress")]
     return BRIEF_TEMPLATE.format(
-        spec_id=spec.meta.get("id", "?"),
+        spec_id=spec_id,
         title=spec.meta.get("title", ""),
         code_root=cr,
         harness_root=harness.root,
         spec_path=spec.path,
         epic_line=epic_line,
+        delegation_block=_delegation_block(spec_id, open_ids),
         ticket_lines=ticket_lines,
     )

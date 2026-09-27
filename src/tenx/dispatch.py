@@ -26,7 +26,7 @@ from .multiplexers import (
     position_herdr_workspace_below_parent,
 )
 from .subagent_state import brief_path as state_brief_path
-from .subagent_state import write_receipt
+from .subagent_state import read_receipt, write_receipt
 from .router import resolve_model_route
 
 
@@ -470,6 +470,63 @@ def setup_worktree(project_root: Path, ticket_id: str) -> Path:
     return target_dir
 
 
+def resolve_dispatch_prefs(
+    config: Optional[dict[str, Any]],
+    cli_agent: Optional[str] = None,
+    cli_visual: Optional[bool] = None,
+) -> tuple[str, bool]:
+    """Resolve the worker harness and whether to project the worker visually.
+
+    Precedence: CLI flag > TENX_* environment > `dispatch` section in
+    .tenx/config.yaml > built-in default. Projects that configure nothing keep
+    the headless default (FR-004).
+    """
+    section = (config or {}).get("dispatch")
+    section = section if isinstance(section, dict) else {}
+    agent = cli_agent or str(section.get("agent") or "").strip() or "pi"
+    env = os.environ.get("TENX_DISPATCH_VISUAL")
+    if cli_visual is not None:
+        visual = bool(cli_visual)
+    elif env is not None and env.strip():
+        visual = env.strip().lower() in ("1", "true", "yes", "on")
+    else:
+        visual = bool(section.get("visual", False))
+    return agent, visual
+
+
+def _discard_failed_launch(project_root: Path, ticket_id: str) -> list[str]:
+    """Remove the worktree and branch left by a launch that never dispatched.
+
+    A recorded receipt is the lifecycle record of a ticket that did launch, so
+    `tenx abort` owns its teardown and cleanup must leave it alone (FR-006).
+    """
+    if read_receipt(project_root, ticket_id):
+        return []
+    removed: list[str] = []
+    target = project_root / ".tenx" / "worktrees" / ticket_id
+    if target.exists():
+        subprocess.run(
+            ["git", "worktree", "remove", "--force", str(target)],
+            cwd=str(project_root), capture_output=True, text=True,
+        )
+        if target.exists():
+            shutil.rmtree(target, ignore_errors=True)
+        removed.append(str(target))
+    branch = f"tenx/{ticket_id}"
+    listed = subprocess.run(
+        ["git", "branch", "--list", branch],
+        cwd=str(project_root), capture_output=True, text=True,
+    )
+    if listed.stdout.strip():
+        subprocess.run(
+            ["git", "branch", "-D", branch],
+            cwd=str(project_root), capture_output=True, text=True,
+        )
+        removed.append(branch)
+    return removed
+    return target_dir
+
+
 def dispatch_ticket(
     project_root: Path,
     spec_id: str,
@@ -510,6 +567,19 @@ def dispatch_ticket(
 
     mux_target = detect_multiplexer(preference="none" if not visual else multiplexer)
     projection = plan_visual_projection(mux_target, ticket_id, worktree_path, agent_cmd.cmd, focus=focus) if visual else None
+
+    if visual and projection is None:
+        return {
+            "status": "error",
+            "spec_id": spec_id,
+            "ticket_id": ticket_id,
+            "error": (
+                "Visual dispatch requested but no active terminal multiplexer was "
+                f"detected ({mux_target.details}). Run from a Herdr-managed pane "
+                "(HERDR_ENV=1) or inside tmux ($TMUX), pass "
+                "--multiplexer herdr|tmux, or drop --visual for a headless worker."
+            ),
+        }
 
     if dry_run:
         res = {
@@ -561,6 +631,21 @@ def dispatch_ticket(
     wt_brief.parent.mkdir(parents=True, exist_ok=True)
     wt_brief.write_text(brief_content, encoding="utf-8")
 
+    # Every failure below happens after the worktree exists, so each one must
+    # drop the launch residue it created (FR-006).
+    def fail(error: str, **extra: Any) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "status": "error",
+            "spec_id": spec_id,
+            "ticket_id": ticket_id,
+            "error": error,
+            **extra,
+        }
+        removed = _discard_failed_launch(project_root, ticket_id)
+        if removed:
+            payload["cleaned_up"] = removed
+        return payload
+
     # If visual projection is requested, launch through the official
     # multiplexer surface and require a verified agent receipt.
     if visual and projection:
@@ -568,39 +653,26 @@ def dispatch_ticket(
             if projection.multiplexer == "herdr":
                 res_mux = subprocess.run(projection.create_cmd, capture_output=True, text=True, timeout=10)
                 if res_mux.returncode != 0:
-                    return {
-                        "status": "error",
-                        "spec_id": spec_id,
-                        "ticket_id": ticket_id,
-                        "error": f"Multiplexer creation failed ({projection.multiplexer}): {res_mux.stderr.strip() or res_mux.stdout.strip()}",
-                    }
-            if projection.multiplexer == "herdr":
-                if os.environ.get("HERDR_ENV") != "1":
-                    return {
-                        "status": "error",
-                        "spec_id": spec_id,
-                        "ticket_id": ticket_id,
-                        "error": "Herdr visual dispatch requires HERDR_ENV=1; read skill://herdr and run from a Herdr-managed pane",
-                    }
+                    return fail(
+                        f"Multiplexer creation failed ({projection.multiplexer}): "
+                        f"{res_mux.stderr.strip() or res_mux.stdout.strip()}",
+                        worktree_path=str(wt_dir),
+                    )
                 try:
                     out_json = json.loads(res_mux.stdout)
                     res_payload = out_json.get("result", {})
                     child_ws_id = res_payload.get("workspace", {}).get("workspace_id")
                     pane_id = res_payload.get("root_pane", {}).get("pane_id")
                 except (AttributeError, json.JSONDecodeError) as exc:
-                    return {
-                        "status": "error",
-                        "spec_id": spec_id,
-                        "ticket_id": ticket_id,
-                        "error": f"Herdr workspace creation returned invalid JSON: {exc}",
-                    }
+                    return fail(
+                        f"Herdr workspace creation returned invalid JSON: {exc}",
+                        worktree_path=str(wt_dir),
+                    )
                 if not child_ws_id or not pane_id:
-                    return {
-                        "status": "error",
-                        "spec_id": spec_id,
-                        "ticket_id": ticket_id,
-                        "error": "Herdr workspace creation did not return both workspace_id and root pane_id",
-                    }
+                    return fail(
+                        "Herdr workspace creation did not return both workspace_id and root pane_id",
+                        worktree_path=str(wt_dir),
+                    )
                 sock_path = os.environ.get("HERDR_SOCKET_PATH") or str(Path.home() / ".config" / "herdr" / "herdr.sock")
                 if os.path.exists(sock_path):
                     position_herdr_workspace_below_parent(sock_path, child_ws_id)
@@ -646,13 +718,10 @@ def dispatch_ticket(
             elif projection.multiplexer == "tmux":
                 created = subprocess.run(projection.create_cmd, capture_output=True, text=True, timeout=10)
                 if created.returncode != 0:
-                    return {
-                        "status": "error",
-                        "spec_id": spec_id,
-                        "ticket_id": ticket_id,
-                        "worktree_path": str(wt_dir),
-                        "error": created.stderr.strip() or created.stdout.strip() or "tmux window creation failed",
-                    }
+                    return fail(
+                        created.stderr.strip() or created.stdout.strip() or "tmux window creation failed",
+                        worktree_path=str(wt_dir),
+                    )
                 window_id, _, pane_id = created.stdout.strip().partition(":")
                 receipt = {
                     "status": "dispatched",
@@ -671,12 +740,10 @@ def dispatch_ticket(
                 write_receipt(project_root, ticket_id, receipt)
                 return receipt
         except Exception as exc:
-            return {
-                "status": "error",
-                "spec_id": spec_id,
-                "ticket_id": ticket_id,
-                "error": f"Multiplexer execution failed: {exc}",
-            }
+            return fail(
+                f"Multiplexer execution failed: {exc}",
+                worktree_path=str(wt_dir),
+            )
 
     # Execute headless agent command
     try:

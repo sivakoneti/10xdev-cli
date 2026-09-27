@@ -17,6 +17,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import Optional
 
 FAILURES: list[str] = []
 USE_MODULE = "--module" in sys.argv
@@ -36,12 +37,18 @@ if USE_MODULE:
     os.environ["PATH"] = f"{_shim_dir}{os.pathsep}{os.environ.get('PATH', '')}"
 
 
-def tenx(*args: str, cwd: Path, expect_rc: int = 0) -> subprocess.CompletedProcess:
+def tenx(*args: str, cwd: Path, expect_rc: int = 0,
+         env_overrides: Optional[dict] = None) -> subprocess.CompletedProcess:
     cmd = [sys.executable, "-m", "tenx", *args] if USE_MODULE else ["tenx", *args]
     env = dict(os.environ)
     if USE_MODULE:
         src = str(Path(__file__).resolve().parent.parent / "src")
         env["PYTHONPATH"] = src + os.pathsep + env.get("PYTHONPATH", "")
+    for key, value in (env_overrides or {}).items():
+        if value is None:
+            env.pop(key, None)
+        else:
+            env[key] = value
     proc = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True)
     if proc.returncode != expect_rc:
         raise AssertionError(
@@ -2056,6 +2063,180 @@ def main() -> int:
                   wait_for_subagent_completion("herdr", None).status == "missing")
             check("SPC-035 T3: tmux missing target fails closed",
                   wait_for_subagent_completion("tmux", None).status == "missing")
+
+            # ---- frontmatter must survive the parser that has no PyYAML.
+            # PyYAML wraps long plain scalars at ~80 columns; the wrapped
+            # continuation lines are unreadable by the fallback parser, so
+            # artifacts written on a PyYAML machine break every install
+            # without it (CON-002 makes PyYAML optional).
+            from tenx import yamlite
+
+            long_meta = {
+                "id": "SPC-999",
+                "title": ("Delegation trigger, config-driven visual projection, "
+                          "and visual-launch failure integrity"),
+                "tickets": [{
+                    "id": "SPC-999-T1",
+                    "title": ("Make the bundled tenx-dispatch skill route "
+                              "proactively on ticket-shaped intent (FR-001)"),
+                    "status": "done",
+                }],
+            }
+            dumped = yamlite.dump_frontmatter(long_meta)
+            saved_pyyaml = yamlite._pyyaml
+            yamlite._pyyaml = None
+            try:
+                problems: list = []
+                reparsed = yamlite.yamlite_load(dumped, problems)
+            finally:
+                yamlite._pyyaml = saved_pyyaml
+            check("CON-002: frontmatter writer emits no wrapped lines",
+                  not problems, str(problems))
+            check("CON-002: long title survives the fallback parser",
+                  reparsed.get("title") == long_meta["title"],
+                  repr(reparsed.get("title")))
+            check("CON-002: long ticket title survives the fallback parser",
+                  reparsed.get("tickets", [{}])[0].get("title")
+                  == long_meta["tickets"][0]["title"])
+
+            # ---- SPC-036: delegation triggers, configured projection,
+            #      and visual-launch integrity ----
+            from tenx.dispatch import _discard_failed_launch, resolve_dispatch_prefs
+            from tenx.templates import SKILLS
+
+            # FR-001: the routing contract must invite proactive use and name
+            # ticket-shaped triggers instead of suppressing itself.
+            desc = SKILLS["tenx-dispatch"].split("---", 2)[1]
+            check("SPC-036 T1: skill description invites proactive routing",
+                  "use proactively" in desc.lower())
+            check("SPC-036 T1: skill description names ticket-shaped triggers",
+                  "tenx next" in desc and "open tickets" in desc.lower())
+            check("SPC-036 T1: skill no longer suppresses spec-driven work",
+                  "do not use for ordinary" not in desc.lower())
+            check("SPC-036 T1: herdr supervision is inline, not skill-gated",
+                  "herdr agent get" in SKILLS["tenx-dispatch"])
+
+            # FR-002: tenx next must surface the runnable delegation command.
+            spec_two = (
+                "---\nid: SPC-001\ntype: spec\ntitle: Trigger Spec\n"
+                "epic: EPC-001\nstatus: in_progress\n"
+                "created: 2026-01-01\nupdated: 2026-01-01\n"
+                "tickets:\n"
+                "  - id: SPC-001-T1\n    title: One\n    status: todo\n"
+                "  - id: SPC-001-T2\n    title: Two\n    status: todo\n---\n\n"
+                "## Summary\n\nSummary\n\n"
+            )
+            sp_file.write_text(spec_two, encoding="utf-8")
+            nxt = json.loads(tenx("next", "--json", cwd=dproj).stdout)
+            delegated = [a for a in nxt if a["action"].startswith("delegate ready ticket")]
+            check("SPC-036 T2: tenx next offers one delegation action per spec",
+                  len(delegated) == 1, str([a["action"] for a in nxt]))
+            check("SPC-036 T2: delegation action names the runnable command",
+                  bool(delegated)
+                  and "tenx dispatch SPC-001 SPC-001-T1 --visual" in delegated[0]["detail"])
+            check("SPC-036 T2: independent tickets also get the swarm command",
+                  bool(delegated) and "tenx swarm SPC-001 --visual" in delegated[0]["detail"])
+            check("SPC-036 T2: delegation outranks in-band implementation",
+                  bool(delegated)
+                  and delegated[0]["priority"] < min(
+                      a["priority"] for a in nxt if a["action"].startswith("implement ticket")))
+
+            # FR-003: the unattended brief must name the worker commands too.
+            exec_out = tenx("exec", "SPC-001", cwd=dproj).stdout
+            check("SPC-036 T3: exec brief offers isolated workers",
+                  "tenx dispatch SPC-001 SPC-001-T1 --visual" in exec_out
+                  and "tenx swarm SPC-001" in exec_out)
+            sp_single = spec_two.replace(
+                "  - id: SPC-001-T2\n    title: Two\n    status: todo\n", "")
+            sp_file.write_text(sp_single, encoding="utf-8")
+            check("SPC-036 T3: single-ticket spec is not pushed to delegate",
+                  "Isolated workers" not in tenx("exec", "SPC-001", cwd=dproj).stdout)
+            sp_file.write_text(spec_two, encoding="utf-8")
+
+            # FR-004: CLI flag > env > config > headless default.
+            check("SPC-036 T4: no config keeps the headless default",
+                  resolve_dispatch_prefs({}, None, None) == ("pi", False))
+            check("SPC-036 T4: config drives agent and visual",
+                  resolve_dispatch_prefs({"dispatch": {"agent": "omp", "visual": True}}, None, None)
+                  == ("omp", True))
+            check("SPC-036 T4: CLI --agent wins over config",
+                  resolve_dispatch_prefs({"dispatch": {"agent": "omp"}}, "codex", None)
+                  == ("codex", False))
+            check("SPC-036 T4: CLI --no-visual wins over config",
+                  resolve_dispatch_prefs({"dispatch": {"visual": True}}, None, False)
+                  == ("pi", False))
+            os.environ["TENX_DISPATCH_VISUAL"] = "1"
+            try:
+                check("SPC-036 T4: env overrides absent config",
+                      resolve_dispatch_prefs({}, None, None) == ("pi", True))
+            finally:
+                os.environ.pop("TENX_DISPATCH_VISUAL", None)
+
+            cfg_path = dproj / ".tenx" / "config.yaml"
+            base_cfg = cfg_path.read_text(encoding="utf-8")
+            cfg_path.write_text(base_cfg + "\ndispatch:\n  agent: omp\n  visual: true\n",
+                                encoding="utf-8")
+            cfg_dry = json.loads(tenx("dispatch", "SPC-001", "SPC-001-T1",
+                                      "--visual", "--multiplexer", "herdr",
+                                      "--dry-run", "--json", cwd=dproj).stdout)
+            check("SPC-036 T4: config visual reaches the dispatch plan",
+                  cfg_dry.get("visual") is True and cfg_dry.get("multiplexer") == "herdr")
+            cfg_agent = json.loads(tenx("dispatch", "SPC-001", "SPC-001-T1",
+                                       "--multiplexer", "herdr",
+                                       "--dry-run", "--json", cwd=dproj).stdout)
+            check("SPC-036 T4: config agent reaches the dispatch plan",
+                  cfg_agent.get("agent") == "omp", str(cfg_agent.get("agent")))
+            no_vis = json.loads(tenx("dispatch", "SPC-001", "SPC-001-T1",
+                                     "--no-visual", "--dry-run",
+                                     "--json", cwd=dproj).stdout)
+            check("SPC-036 T4: --no-visual overrides config",
+                  no_vis.get("visual") is False)
+            env_vis = json.loads(tenx("dispatch", "SPC-001", "SPC-001-T1",
+                                      "--multiplexer", "herdr", "--dry-run", "--json",
+                                      cwd=dproj,
+                                      env_overrides={"TENX_DISPATCH_VISUAL": "1"}).stdout)
+            check("SPC-036 T4: env reaches the dispatch plan",
+                  env_vis.get("visual") is True)
+            cfg_path.write_text(base_cfg, encoding="utf-8")
+
+            # FR-005: asking for a visual worker with no multiplexer must fail
+            # loudly instead of silently running an invisible headless worker.
+            no_mux = tenx("dispatch", "SPC-001", "SPC-001-T1", "--visual",
+                          "--dry-run", "--json", cwd=dproj, expect_rc=1,
+                          env_overrides={"HERDR_ENV": None, "TMUX": None})
+            no_mux_j = json.loads(no_mux.stdout)
+            check("SPC-036 T5: visual without a multiplexer is an error",
+                  no_mux_j.get("status") == "error"
+                  and "no active terminal multiplexer" in no_mux_j.get("error", ""),
+                  str(no_mux_j))
+
+            # FR-006: a launch that never dispatched leaves no residue.
+            subprocess.run(["git", "add", "-A"], cwd=dproj, capture_output=True)
+            subprocess.run(["git", "commit", "-qm", "base"], cwd=dproj, capture_output=True)
+            from tenx.dispatch import setup_worktree
+            from tenx.subagent_state import write_receipt as write_sub_receipt
+
+            wt = setup_worktree(dproj, "SPC-001-T1")
+            check("SPC-036 T6: worktree exists before cleanup",
+                  wt.is_dir() and wt.parent.name == "worktrees")
+            removed = _discard_failed_launch(dproj, "SPC-001-T1")
+            branches = subprocess.run(["git", "branch", "--list", "tenx/SPC-001-T1"],
+                                      cwd=dproj, capture_output=True, text=True).stdout
+            check("SPC-036 T6: failed launch removes worktree and branch",
+                  not wt.exists() and not branches.strip() and len(removed) == 2,
+                  f"removed={removed} branches={branches!r}")
+
+            wt2 = setup_worktree(dproj, "SPC-001-T1")
+            write_sub_receipt(dproj, "SPC-001-T1",
+                              {"status": "dispatched", "spec_id": "SPC-001",
+                               "ticket_id": "SPC-001-T1", "branch": "tenx/SPC-001-T1"})
+            kept = _discard_failed_launch(dproj, "SPC-001-T1")
+            check("SPC-036 T6: receipted ticket is left for tenx abort",
+                  kept == [] and wt2.is_dir())
+            subprocess.run(["git", "worktree", "remove", "--force", str(wt2)],
+                           cwd=dproj, capture_output=True)
+            subprocess.run(["git", "branch", "-D", "tenx/SPC-001-T1"],
+                           cwd=dproj, capture_output=True)
 
         finally:
             shutil.rmtree(dproj, ignore_errors=True)

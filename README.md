@@ -469,6 +469,28 @@ tenx dispatch SPC-001 SPC-001-T1 --dry-run
 - **Enforced landing loop:** Dispatched workers implement changes within their worktree, execute tests, update ticket status (`tenx ticket <SPEC> <TICKET> done`), log progress with artifact references (`tenx log ... --ref <SPEC>`), and ensure `tenx validate` reports 0 errors before finishing.
 - **Supervisor delegation protocol:** Dispatched subagent workflows are exposed natively to agents via `tenx_dispatch`, `tenx_reconcile`, `tenx_abort`, `tenx_dag`, `tenx_swarm`, and `tenx_ticket_brief` MCP tools, as well as the bundled `tenx-dispatch` skill (`tenx skills install`).
 
+#### When delegation triggers
+
+Delegation is a routing decision, and the harness surfaces it rather than
+assuming it. `tenx next` emits a `delegate ready ticket …` action for every
+active spec that has a dependency-satisfied ticket, naming the runnable
+command; `tenx exec <SPEC>` prints the same commands in the execution brief;
+and the bundled `tenx-dispatch` skill is written to route proactively on
+ticket-shaped intent (a spec with open tickets, a multi-ticket spec where
+isolation keeps test output out of the supervisor's context).
+
+```bash
+tenx next                       # shows: tenx dispatch SPC-001 SPC-001-T1 --visual
+tenx dispatch SPC-001 SPC-001-T1 --visual --dry-run   # inspect the plan first
+```
+
+Nothing fires on its own. Unattended runs stay an explicit operator act:
+schedule `tenx swarm <SPEC> --auto-reconcile` from CI or cron. A
+background watcher that spawns workers without an operator decision is
+deliberately not provided — it is a poller with no event source, it burns
+idle compute, and without an idempotency guard on ticket ID it duplicates
+spend on retry.
+
 ### Visual terminal multiplexer projection (Herdr and tmux)
 
 Headless background subagents are powerful for unattended pipelines, but human operators and supervisors working in interactive terminals need real-time visual observability. Passing `--visual` to `tenx dispatch` projects the subagent directly into an active terminal multiplexer:
@@ -484,6 +506,28 @@ tenx dispatch SPC-001 SPC-001-T1 --visual --multiplexer tmux
 # Focus the newly projected subagent container immediately
 tenx dispatch SPC-001 SPC-001-T1 --visual --focus
 ```
+
+
+Projection can also be the project default, so no flag is needed per call:
+
+```yaml
+# .tenx/config.yaml
+dispatch:
+  agent: omp      # default worker harness (pi, omp, prime, codex)
+  visual: true    # project into Herdr or tmux by default
+```
+
+Resolution order is CLI flag > `TENX_DISPATCH_VISUAL=1` > `dispatch` in
+`config.yaml` > headless default. `--no-visual` forces a headless worker even
+when the config asks for projection. Projects that set nothing keep the
+headless default; add `dispatch.visual: true` to opt in.
+
+- **Fail loudly, never silently:** `--visual` with no active Herdr and no
+  `$TMUX` exits non-zero with the cause instead of quietly running an
+  invisible headless worker, and a launch that fails after worktree creation
+  leaves no `.tenx/worktrees/<TICKET-ID>` directory and no `tenx/<TICKET-ID>`
+  branch behind. A ticket that did launch keeps its receipt so
+  `tenx abort <TICKET-ID>` can tear it down.
 
 - **Automatic multiplexer detection:** Automatically probes the active environment for Herdr (`HERDR_ENV=1` or `HERDR_SESSION`) and tmux (`TMUX`). Explicitly override with `--multiplexer <auto|herdr|tmux|none>`.
 - **Herdr workspace projection & hierarchical sidebar ordering:** Creates a dedicated Herdr workspace labeled with the ticket ID (`herdr workspace create --label <TICKET-ID> --cwd <worktree>`). Using raw Unix domain socket JSON-RPC (`$HERDR_SOCKET_PATH` or `~/.config/herdr/herdr.sock`) and protocol 16 `workspace.move`, tenx automatically repositions the child workspace immediately below the parent workspace in Herdr's left navigation sidebar. Subagents remain visually grouped under the parent project rather than lost at the bottom of the workspace list.
