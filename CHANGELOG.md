@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.2] - 2026-09-27
+
+### Added
+- Fixed `tenx update` for uv tool installs: the upgrade ran `uv tool upgrade tenx`, but uv keys on the distribution name `tenx-cli` (the console scripts are `tenx`/`10x`), so every uv-tool install answered `tenx is not installed`. Detection now resolves the name uv actually tracks. (SPC-036)
+
 ## [0.27.1] - 2026-09-27
 
 ### Fixed

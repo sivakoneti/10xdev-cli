@@ -810,6 +810,34 @@ def main() -> int:
         from tenx.update import _repo
         check("update repository is the tenx distribution repo",
               _repo() == "sivakoneti/10xdev-cli")
+
+        # `uv tool list` reports the distribution name (`tenx-cli`) while the
+        # console scripts are `tenx`/`10x`. Upgrading by the command name made
+        # uv answer "`tenx` is not installed" and `tenx update` fail for every
+        # uv-tool user, so the upgrade must use the name uv actually tracks.
+        from tenx import update as upd
+
+        class _UVList:
+            def __init__(self, out):
+                self.stdout, self.stderr, self.returncode = out, "", 0
+
+        real_run, real_which = upd.subprocess.run, upd.shutil.which
+        try:
+            upd.shutil.which = lambda n: "/usr/bin/uv" if n == "uv" else None
+            upd.subprocess.run = lambda *a, **k: _UVList(
+                "tenx-cli v0.27.0\n- 10x\n- tenx\n")
+            check("update resolves the uv distribution name",
+                  upd._uv_tool_package() == "tenx-cli", str(upd._uv_tool_package()))
+            check("update detects uv as the installer",
+                  upd.detect_installer() == "uv")
+            check("update upgrades by the uv distribution name",
+                  upd.upgrade_command("uv") == ["uv", "tool", "upgrade", "tenx-cli"],
+                  str(upd.upgrade_command("uv")))
+            upd.subprocess.run = lambda *a, **k: _UVList("some-other-tool v1.0.0\n")
+            check("update does not claim an unrelated uv tool",
+                  upd._uv_tool_package() is None and upd.detect_installer() is None)
+        finally:
+            upd.subprocess.run, upd.shutil.which = real_run, real_which
         # session-start surfaces tell agents to check for updates
         tenx("hook", "install", "--agent", "all", cwd=scanproj)
         tenx("skills", "install", cwd=scanproj)

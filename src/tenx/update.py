@@ -167,16 +167,31 @@ def check_update(current_version: str) -> dict[str, Any]:
     return result
 
 
+def _uv_tool_package() -> str | None:
+    """Distribution name uv manages tenx under, or None if uv does not.
+
+    uv keys on the distribution name from pyproject (`tenx-cli`), while the
+    console scripts it exposes are `tenx` and `10x`. Upgrading by the command
+    name makes uv answer "`tenx` is not installed".
+    """
+    if not shutil.which("uv"):
+        return None
+    try:
+        r = subprocess.run(["uv", "tool", "list"], capture_output=True,
+                           text=True, timeout=15)
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    for line in r.stdout.splitlines():
+        m = re.match(r"^([A-Za-z0-9._-]+)\s+v?\d", line)
+        if m and (m.group(1) == "tenx" or m.group(1).startswith("tenx-")):
+            return m.group(1)
+    return None
+
+
 def detect_installer() -> str | None:
     """'uv' | 'pipx' | None — whichever tool manages the tenx install."""
-    if shutil.which("uv"):
-        try:
-            r = subprocess.run(["uv", "tool", "list"], capture_output=True,
-                               text=True, timeout=15)
-            if re.search(r"(?m)^tenx\b|\btenx\s+v?\d", r.stdout):
-                return "uv"
-        except (subprocess.TimeoutExpired, OSError):
-            pass
+    if _uv_tool_package():
+        return "uv"
     if shutil.which("pipx"):
         try:
             r = subprocess.run(["pipx", "list", "--short"],
@@ -189,8 +204,9 @@ def detect_installer() -> str | None:
 
 
 def upgrade_command(installer: str) -> list[str]:
+    """Upgrade argv, using the package name the installer actually tracks."""
     if installer == "uv":
-        return ["uv", "tool", "upgrade", "tenx"]
+        return ["uv", "tool", "upgrade", _uv_tool_package() or "tenx"]
     return ["pipx", "upgrade", "tenx"]
 
 
