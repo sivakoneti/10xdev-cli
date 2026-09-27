@@ -2,15 +2,15 @@
 id: SPC-037
 type: spec
 title: Capability catalog parity for configured dispatch and the delegation trigger
-status: draft
+status: complete
 epic: EPC-027
 priority: P2
 created: 2026-09-27
-updated: 2026-09-27
+updated: '2026-09-27'
 tickets:
-  - id: SPC-037-T1
-    title: Teach the capability catalog about configured projection and the delegation trigger (FR-001)
-    status: done
+- id: SPC-037-T1
+  title: Teach the capability catalog about configured projection and the delegation trigger (FR-001)
+  status: done
 ---
 
 ## Summary

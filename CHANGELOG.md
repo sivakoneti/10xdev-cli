@@ -7,17 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-09-27
+
 ### Added
 - Added proactive delegation routing: `tenx next` now names the runnable isolated-worker command for every spec with ready tickets, the `tenx exec` brief prints the same commands, and the bundled `tenx-dispatch` skill routes on ticket-shaped intent instead of suppressing itself. Added a `dispatch` section to `.tenx/config.yaml` (`agent`, `visual`) with `TENX_DISPATCH_VISUAL` override and `--no-visual`, defaulting to headless. (SPC-036)
-- Fixed a second live-dispatch defect found by dogfooding: the dry-run plan advertised a Herdr agent name with underscores while the live launch used dashes, so following the plan with `herdr agent get <name>` returned `agent_not_found`. Plan and launch now share one `herdr_agent_name()` helper and the agreement is pinned by tests. (SPC-036)
+
+### Changed
+- Teach capability catalog about configured projection and delegation trigger (dispatch and swarm flags, dispatch config section, --no-visual) (SPC-037)
 
 ### Fixed
 - `tenx dispatch --visual` with no active multiplexer now exits non-zero with the cause instead of silently running an invisible headless worker, and a launch that fails after worktree creation leaves no worktree or branch behind. (SPC-036)
 - Fixed frontmatter portability: PyYAML wrapped long titles at ~80 columns, producing continuation lines the fallback parser could not read, so artifacts written on a PyYAML machine failed `tenx validate` on every install without it. The writer now emits unwrapped scalars and the round-trip is pinned by tests. (SPC-036)
+- Fixed a second live-dispatch defect found by dogfooding: the dry-run plan advertised a Herdr agent name with underscores while the live launch used dashes, so following the plan with `herdr agent get <name>` returned `agent_not_found`. Plan and launch now share one `herdr_agent_name()` helper and the agreement is pinned by tests. (SPC-036)
 - Fixed live Herdr dispatch, found by dogfooding: `herdr agent start --timeout` is a readiness wait capped at 300000ms, not a work budget, so passing the ticket timeout there made every visual dispatch fail closed with `invalid_agent_timeout`. The readiness budget is now bounded independently and the dry-run plan reports it truthfully. (SPC-036)
-
-### Changed
-- Teach capability catalog about configured projection and delegation trigger (dispatch and swarm flags, dispatch config section, --no-visual) (SPC-037)
 
 ## [0.26.2] - 2026-09-25
 

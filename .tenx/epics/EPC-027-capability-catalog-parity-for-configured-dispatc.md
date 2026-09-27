@@ -1,11 +1,11 @@
 ---
 id: EPC-027
 type: epic
-title: "Capability catalog parity for configured dispatch"
-status: draft
+title: Capability catalog parity for configured dispatch
+status: complete
 priority: P2
 created: 2026-09-27
-updated: 2026-09-27
+updated: '2026-09-27'
 ---
 
 ## Objective
