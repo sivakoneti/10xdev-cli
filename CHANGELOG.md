@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed frontmatter portability: PyYAML wrapped long titles at ~80 columns, producing continuation lines the fallback parser could not read, so artifacts written on a PyYAML machine failed `tenx validate` on every install without it. The writer now emits unwrapped scalars and the round-trip is pinned by tests. (SPC-036)
 - Fixed live Herdr dispatch, found by dogfooding: `herdr agent start --timeout` is a readiness wait capped at 300000ms, not a work budget, so passing the ticket timeout there made every visual dispatch fail closed with `invalid_agent_timeout`. The readiness budget is now bounded independently and the dry-run plan reports it truthfully. (SPC-036)
 
+### Changed
+- Teach capability catalog about configured projection and delegation trigger (dispatch and swarm flags, dispatch config section, --no-visual) (SPC-037)
+
 ## [0.26.2] - 2026-09-25
 
 ### Fixed

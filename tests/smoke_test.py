@@ -2275,6 +2275,36 @@ def main() -> int:
             subprocess.run(["git", "branch", "-D", "tenx/SPC-001-T1"],
                            cwd=dproj, capture_output=True)
 
+            # ---- SPC-037 capability catalog parity for configured dispatch ----
+            print("== SPC-037: capability catalog parity ==")
+            spc37_cat_text = tenx("capabilities", cwd=dproj).stdout
+            check("SPC-037 FR-001: dispatch text advertises --no-visual",
+                  "--no-visual" in spc37_cat_text)
+            check("SPC-037 FR-001: catalog mentions dispatch config section",
+                  "dispatch` config section" in spc37_cat_text
+                  or "dispatch config section" in spc37_cat_text)
+            check("SPC-037 FR-001: catalog mentions delegation trigger",
+                  "surfaced automatically by `tenx next`" in spc37_cat_text)
+
+            spc37_json = json.loads(tenx("capabilities", "--json", cwd=dproj).stdout)
+            spc37_by_name = {c["name"]: c for c in spc37_json.get("capabilities", [])}
+            disp_cap = spc37_by_name.get("dispatch", {})
+            swarm_cap = spc37_by_name.get("swarm", {})
+            check("SPC-037 SC-001: dispatch usage lists --no-visual",
+                  "--no-visual" in disp_cap.get("usage", ""))
+            check("SPC-037 SC-001: dispatch when mentions dispatch config section",
+                  "dispatch" in disp_cap.get("when", "") and "config section" in disp_cap.get("when", "")
+                  and "--no-visual" in disp_cap.get("when", ""))
+            check("SPC-037 SC-001: dispatch when mentions delegation trigger",
+                  "tenx next" in disp_cap.get("when", ""))
+            check("SPC-037 SC-001: swarm usage lists --no-visual",
+                  "--no-visual" in swarm_cap.get("usage", ""))
+            check("SPC-037 SC-001: swarm when mentions dispatch config section",
+                  "dispatch" in swarm_cap.get("when", "") and "config section" in swarm_cap.get("when", "")
+                  and "--no-visual" in swarm_cap.get("when", ""))
+            check("SPC-037 SC-001: swarm when mentions delegation trigger",
+                  "tenx next" in swarm_cap.get("when", ""))
+
         finally:
             shutil.rmtree(dproj, ignore_errors=True)
 
