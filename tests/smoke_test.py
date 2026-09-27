@@ -1883,6 +1883,29 @@ def main() -> int:
             check("SPC-035 T3: missing adapter fails closed",
                   tenx("dispatch", "SPC-001", "SPC-001-T1", "--agent", "definitely-missing", "--dry-run", "--json", cwd=dproj, expect_rc=1).stdout.find("not found") >= 0)
 
+            # `herdr agent start --timeout` is a readiness wait capped at
+            # 300000ms, not a work budget. Passing the ticket timeout there
+            # made every live visual dispatch fail closed with
+            # invalid_agent_timeout, so the bound is pinned here.
+            from tenx.multiplexers import (
+                HERDR_AGENT_START_TIMEOUT_MAX_MS,
+                herdr_start_timeout_ms,
+            )
+            check("SPC-037 T1: readiness timeout is inside herdr's range",
+                  3000 < herdr_start_timeout_ms() <= HERDR_AGENT_START_TIMEOUT_MAX_MS)
+            run_cmd = dr_vh_j.get("projection", {}).get("run_cmd", [])
+            start_ms = run_cmd[run_cmd.index("--timeout") + 1] if "--timeout" in run_cmd else "0"
+            check("SPC-037 T1: agent start plan is not the ticket work budget",
+                  int(start_ms) <= HERDR_AGENT_START_TIMEOUT_MAX_MS
+                  and int(start_ms) < 600_000, start_ms)
+            long_timeout = json.loads(tenx("dispatch", "SPC-001", "SPC-001-T1", "--visual",
+                                           "--multiplexer", "herdr", "--timeout", "1800",
+                                           "--dry-run", "--json", cwd=dproj).stdout)
+            lt_cmd = long_timeout["projection"]["run_cmd"]
+            lt_ms = int(lt_cmd[lt_cmd.index("--timeout") + 1])
+            check("SPC-037 T1: a long ticket timeout cannot exceed herdr's cap",
+                  lt_ms <= HERDR_AGENT_START_TIMEOUT_MAX_MS, str(lt_ms))
+
             # 6. Test SPC-030: Model Routing and Multi-Harness command builders (omp, prime-agent, codex)
             from tenx.dispatch import resolve_agent_command
             from tenx.router import resolve_model_route

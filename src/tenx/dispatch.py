@@ -167,6 +167,21 @@ class AgentCommand:
     notes: str = ""
 
 
+# `herdr agent start --timeout` is a readiness wait — how long to let the
+# agent boot and become ready for input — and herdr rejects anything above
+# 300000ms. It is not a work budget, so the ticket timeout must never be
+# passed here: doing so made every visual dispatch fail closed.
+HERDR_AGENT_START_TIMEOUT_MS = 120_000
+HERDR_AGENT_START_TIMEOUT_MIN_MS = 3_000
+HERDR_AGENT_START_TIMEOUT_MAX_MS = 300_000
+
+
+def herdr_start_timeout_ms() -> int:
+    """Readiness budget for `herdr agent start`, inside herdr's accepted range."""
+    return min(max(HERDR_AGENT_START_TIMEOUT_MS, HERDR_AGENT_START_TIMEOUT_MIN_MS),
+               HERDR_AGENT_START_TIMEOUT_MAX_MS)
+
+
 def _herdr_agent_kind(agent: str) -> str | None:
     """Return Herdr's recognized kind for a supported dispatch harness."""
     return {
@@ -220,9 +235,12 @@ def _start_herdr_agent(
     if not kind:
         return {"ok": False, "error": f"Herdr does not recognize agent kind '{agent}'"}
     name = "tenx_" + re.sub(r"[^a-z0-9_-]", "_", ticket_id.lower())[:24]
+    # Readiness wait, bounded by what herdr accepts. The ticket timeout is the
+    # work budget and belongs on `agent prompt --wait` instead.
+    start_timeout_ms = herdr_start_timeout_ms()
     start_args = [
         "agent", "start", name, "--kind", kind, "--pane", pane_id,
-        "--timeout", str(timeout * 1000),
+        "--timeout", str(start_timeout_ms),
     ]
     native_args: list[str] = []
     if model and kind in ("omp", "pi", "codex", "grok"):
@@ -233,7 +251,7 @@ def _start_herdr_agent(
         native_args.extend(["--reasoning-effort", thinking])
     if native_args:
         start_args.extend(["--", *native_args])
-    started = _run_herdr_command(start_args, timeout=timeout + 5)
+    started = _run_herdr_command(start_args, timeout=start_timeout_ms // 1000 + 10)
     if not started["ok"]:
         return started
     agent_payload = started["payload"].get("result", {}).get("agent", {})

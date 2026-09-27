@@ -163,6 +163,21 @@ class ProjectionPlan:
     summary: str
 
 
+# `herdr agent start --timeout` is a readiness wait — how long to let the agent
+# boot and become ready for input — and herdr rejects anything above 300000ms.
+# It is not a work budget, so a ticket timeout must never be passed here:
+# doing so made every visual dispatch fail closed.
+HERDR_AGENT_START_TIMEOUT_MS = 120_000
+HERDR_AGENT_START_TIMEOUT_MIN_MS = 3_000
+HERDR_AGENT_START_TIMEOUT_MAX_MS = 300_000
+
+
+def herdr_start_timeout_ms() -> int:
+    """Readiness budget for `herdr agent start`, inside herdr's accepted range."""
+    return min(max(HERDR_AGENT_START_TIMEOUT_MS, HERDR_AGENT_START_TIMEOUT_MIN_MS),
+               HERDR_AGENT_START_TIMEOUT_MAX_MS)
+
+
 def plan_visual_projection(
     mux: MultiplexerTarget,
     ticket_id: str,
@@ -196,6 +211,7 @@ def plan_visual_projection(
         run_args = [
             "herdr", "agent", "start", name, "--kind", kind,
             "--pane", "<root-pane-id>",
+            "--timeout", str(herdr_start_timeout_ms()),
         ]
 
         return ProjectionPlan(
