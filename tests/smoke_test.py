@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -1905,6 +1906,19 @@ def main() -> int:
             lt_ms = int(lt_cmd[lt_cmd.index("--timeout") + 1])
             check("SPC-037 T1: a long ticket timeout cannot exceed herdr's cap",
                   lt_ms <= HERDR_AGENT_START_TIMEOUT_MAX_MS, str(lt_ms))
+
+            # The dry-run plan and the live launch must name the agent
+            # identically. When they disagreed, following the plan with
+            # `herdr agent get <name>` returned agent_not_found, so an
+            # operator could not supervise the worker they just started.
+            from tenx.multiplexers import herdr_agent_name
+
+            planned_name = run_cmd[3]
+            check("SPC-037 T1: plan and launch agree on the agent name",
+                  planned_name == herdr_agent_name("SPC-001-T1"),
+                  f"plan={planned_name}")
+            check("SPC-037 T1: agent name is a legal herdr name",
+                  re.fullmatch(r"[a-z][a-z0-9_-]{0,31}", herdr_agent_name("SPC-001-T1")) is not None)
 
             # 6. Test SPC-030: Model Routing and Multi-Harness command builders (omp, prime-agent, codex)
             from tenx.dispatch import resolve_agent_command

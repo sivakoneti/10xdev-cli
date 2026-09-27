@@ -22,6 +22,7 @@ from .multiplexers import (
     MultiplexerTarget,
     ProjectionPlan,
     detect_multiplexer,
+    herdr_agent_name,
     plan_visual_projection,
     position_herdr_workspace_below_parent,
 )
@@ -234,7 +235,7 @@ def _start_herdr_agent(
     kind = _herdr_agent_kind(agent)
     if not kind:
         return {"ok": False, "error": f"Herdr does not recognize agent kind '{agent}'"}
-    name = "tenx_" + re.sub(r"[^a-z0-9_-]", "_", ticket_id.lower())[:24]
+    name = herdr_agent_name(ticket_id)
     # Readiness wait, bounded by what herdr accepts. The ticket timeout is the
     # work budget and belongs on `agent prompt --wait` instead.
     start_timeout_ms = herdr_start_timeout_ms()

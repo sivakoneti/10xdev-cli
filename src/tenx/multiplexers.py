@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -178,6 +179,17 @@ def herdr_start_timeout_ms() -> int:
                HERDR_AGENT_START_TIMEOUT_MAX_MS)
 
 
+def herdr_agent_name(ticket_id: str) -> str:
+    """Stable Herdr agent name for a ticket.
+
+    Herdr requires `[a-z][a-z0-9_-]{0,31}`. The dry-run plan and the live
+    launch must agree on this string: an operator who follows the plan with
+    `herdr agent get <name>` gets `agent_not_found` if the two disagree.
+    """
+    slug = re.sub(r"[^a-z0-9_-]", "_", ticket_id.lower())
+    return ("tenx_" + slug)[:32]
+
+
 def plan_visual_projection(
     mux: MultiplexerTarget,
     ticket_id: str,
@@ -207,7 +219,7 @@ def plan_visual_projection(
         kind = {"omp": "omp", "pi": "pi", "codex": "codex"}.get(
             agent_cmd[0].lower() if agent_cmd else "", agent_cmd[0] if agent_cmd else "unknown"
         )
-        name = "tenx_" + ticket_id.lower().replace("-", "_")[:24]
+        name = herdr_agent_name(ticket_id)
         run_args = [
             "herdr", "agent", "start", name, "--kind", kind,
             "--pane", "<root-pane-id>",
